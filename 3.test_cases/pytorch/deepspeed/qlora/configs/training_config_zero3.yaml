@@ -1,0 +1,68 @@
+# Training Configuration for QLoRA Fine-tuning of Qwen3-8B (ZeRO-3)
+# ===================================================================
+# Same as training_config.yaml but uses DeepSpeed ZeRO-3 for full
+# parameter sharding across GPUs (~12-14GB per GPU vs ~15-17GB).
+
+# Model Configuration
+model:
+  model_name: "Qwen/Qwen3-8B"
+  max_seq_length: 1536
+  torch_dtype: "bfloat16"
+  trust_remote_code: true
+
+# QLoRA Configuration
+qlora:
+  load_in_4bit: true
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_use_double_quant: true
+  bnb_4bit_compute_dtype: "bfloat16"
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
+  bias: "none"
+  task_type: "CAUSAL_LM"
+
+# Dataset Configuration
+data:
+  dataset_name: "FreedomIntelligence/medical-o1-reasoning-SFT"
+  dataset_config: "en"
+  train_split: 0.95
+  max_samples: null
+  num_workers: 4
+
+# Training Configuration
+training:
+  output_dir: "./outputs"
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 4
+  num_train_epochs: 3
+  learning_rate: 2.0e-4
+  weight_decay: 0.01
+  warmup_ratio: 0.03
+  lr_scheduler_type: "cosine"
+  optim: "paged_adamw_8bit"
+  max_grad_norm: 0.3
+  bf16: true
+  fp16: false
+  logging_steps: 10
+  save_steps: 100
+  eval_steps: 100
+  save_total_limit: 5
+  group_by_length: true
+  report_to: "tensorboard"
+  seed: 42
+
+# Parallelism Configuration
+parallel:
+  strategy: "deepspeed_zero3"
+  num_gpus: 0
+  gradient_checkpointing: true

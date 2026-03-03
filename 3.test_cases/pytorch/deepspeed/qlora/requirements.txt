@@ -1,0 +1,31 @@
+# Core ML Libraries
+# NOTE: torch is installed separately with the correct CUDA index URL.
+# - Docker (see Dockerfile):       torch>=2.7.0,<2.10.0 with cu128
+# - Slurm venv (see slurm/README): torch==2.6.0 with cu126
+# See docs/TROUBLESHOOTING.md if you encounter CUBLAS errors (typically caused
+# by environment-level CUDA library conflicts, not a library bug).
+transformers>=4.51.0,<5.0.0
+accelerate>=0.27.0,<2.0.0
+
+# PEFT and Quantization
+peft>=0.10.0,<1.0.0
+bitsandbytes>=0.42.0,<1.0.0
+
+# Dataset and Hugging Face
+datasets>=2.18.0,<3.0.0
+huggingface_hub>=0.21.0,<1.0.0
+
+# Training utilities
+trl>=0.8.0,<1.0.0
+tensorboard>=2.16.0,<3.0.0
+
+# Data processing
+numpy>=1.24.0,<2.0.0
+
+# Utilities
+tqdm>=4.66.0,<5.0.0
+pyyaml>=6.0.0,<7.0.0
+einops>=0.7.0,<1.0.0
+
+# DeepSpeed for distributed training (DDP + ZeRO optimizer/gradient sharding)
+deepspeed>=0.13.0,<1.0.0

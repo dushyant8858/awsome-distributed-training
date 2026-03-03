@@ -1,0 +1,58 @@
+# Storage resources for QLoRA training on SageMaker HyperPod (EKS)
+# ==================================================================
+# Uses Amazon FSx for Lustre (ReadWriteMany) so checkpoints survive
+# node replacements and both ZeRO-2/ZeRO-3 jobs share the same volume.
+#
+# Prerequisites:
+#   - FSx for Lustre filesystem already provisioned in the same VPC
+#   - FSx CSI driver installed (included in the HyperPod Helm chart)
+#
+# Usage:
+#   export FSX_FILESYSTEM_ID=fs-0123456789abcdef0
+#   export FSX_DNS_NAME=fs-0123456789abcdef0.fsx.us-east-1.amazonaws.com
+#   export FSX_MOUNT_NAME=abcdef01
+#   export NAMESPACE=ml-training
+#   envsubst < kubernetes/storage.yaml | kubectl apply -f -
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: fsx-sc
+provisioner: fsx.csi.aws.com
+volumeBindingMode: Immediate
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: fsx-pv-qlora
+spec:
+  capacity:
+    storage: 1200Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  mountOptions:
+    - flock
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: fsx-sc
+  csi:
+    driver: fsx.csi.aws.com
+    volumeHandle: ${FSX_FILESYSTEM_ID}
+    volumeAttributes:
+      dnsname: ${FSX_DNS_NAME}
+      mountname: ${FSX_MOUNT_NAME}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fsx-claim-qlora
+  namespace: ${NAMESPACE}
+  labels:
+    project: qwen3-qlora
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: fsx-sc
+  resources:
+    requests:
+      storage: 1200Gi

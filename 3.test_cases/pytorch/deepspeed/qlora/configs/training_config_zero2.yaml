@@ -1,0 +1,111 @@
+# Training Configuration for QLoRA Fine-tuning of Qwen3-8B
+# ========================================================
+# This file contains all hyperparameters for the training process.
+# Modify these values to customize training behavior.
+
+# Model Configuration
+# -------------------
+model:
+  model_name: "Qwen/Qwen3-8B"       # Hugging Face model ID
+  max_seq_length: 1536              # Reduced from 2048 to prevent OOM with DDP
+  torch_dtype: "bfloat16"           # Model precision
+  trust_remote_code: true           # Required for Qwen models
+
+# QLoRA Configuration
+# -------------------
+# These settings control the quantization and LoRA adapter behavior.
+# The defaults are optimized for memory efficiency on 24GB GPUs.
+qlora:
+  # Quantization settings (BitsAndBytes)
+  load_in_4bit: true                # Enable 4-bit quantization
+  bnb_4bit_quant_type: "nf4"        # NF4 is optimal for LLM weights
+  bnb_4bit_use_double_quant: true   # Nested quantization saves ~0.4 bits/param
+  bnb_4bit_compute_dtype: "bfloat16" # Compute dtype (bfloat16 recommended)
+
+  # LoRA adapter settings
+  lora_r: 16                        # Rank of low-rank matrices (8-64 typical)
+  lora_alpha: 32                    # Scaling factor (usually 2x rank)
+  lora_dropout: 0.05                # Dropout for regularization
+  target_modules:                   # Layers to apply LoRA to
+    - "q_proj"                      # Query projection
+    - "k_proj"                      # Key projection
+    - "v_proj"                      # Value projection
+    - "o_proj"                      # Output projection
+    - "gate_proj"                   # MLP gate
+    - "up_proj"                     # MLP up projection
+    - "down_proj"                   # MLP down projection
+  bias: "none"                      # Don't train biases
+  task_type: "CAUSAL_LM"            # Task type for LoRA
+
+# Dataset Configuration
+# ---------------------
+data:
+  dataset_name: "FreedomIntelligence/medical-o1-reasoning-SFT"
+  dataset_config: "en"              # English subset (19.7k samples)
+  train_split: 0.95                 # 95% train, 5% validation
+  max_samples: null                 # Set to integer for quick testing (e.g., 1000)
+  num_workers: 4                    # DataLoader workers
+
+# Training Configuration
+# ----------------------
+training:
+  output_dir: "./outputs"           # Where to save checkpoints and final model
+
+  # Batch size settings
+  # With 4 GPUs: effective batch = 1 * 4 * 4 = 16
+  # With 1 GPU:  effective batch = 1 * 4     = 4
+  per_device_train_batch_size: 1    # Reduced from 2 to prevent OOM at 99% VRAM
+  per_device_eval_batch_size: 1     # Reduced from 2 for safety
+  gradient_accumulation_steps: 4    # Reduced from 8 (4 GPUs compensate)
+
+  # Training duration
+  num_train_epochs: 3               # Total epochs
+
+  # Optimization
+  learning_rate: 2.0e-4             # Peak learning rate (QLoRA typically uses 1e-4 to 3e-4)
+  weight_decay: 0.01                # L2 regularization
+  warmup_ratio: 0.03                # Warmup steps as fraction of total
+  lr_scheduler_type: "cosine"       # Learning rate schedule
+  optim: "paged_adamw_8bit"         # Memory-efficient optimizer
+  max_grad_norm: 0.3                # Gradient clipping (QLoRA benefits from aggressive clipping)
+
+  # Precision
+  bf16: true                        # Use bfloat16 (recommended for A10G/A100)
+  fp16: false                       # Use float16 (alternative for older GPUs)
+
+  # Logging and checkpointing
+  logging_steps: 10                 # Log every N steps
+  save_steps: 100                   # Save checkpoint every N steps
+  eval_steps: 100                   # Evaluate every N steps
+  save_total_limit: 5               # Increased from 3 for safer recovery
+
+  # Efficiency
+  group_by_length: true             # Group similar length sequences (reduces padding)
+
+  # Reporting
+  report_to: "tensorboard"          # Logging backend
+
+  # Reproducibility
+  seed: 42                          # Random seed
+
+# Parallelism Configuration
+# -------------------------
+# Controls how training is distributed across GPUs.
+#
+# Strategies:
+#   "auto"             - DDP if >1 GPU, single-GPU otherwise
+#   "ddp"              - Data Parallelism only (each GPU holds full model + optimizer)
+#   "deepspeed_zero2"  - DDP + optimizer/gradient sharding (RECOMMENDED for QLoRA)
+#                        Reduces per-GPU optimizer memory by ~75% with 4 GPUs
+#   "deepspeed_zero3"  - DDP + full parameter sharding (maximum memory savings)
+#                        Use if ZeRO-2 still runs out of memory
+#
+# Memory impact (4x A10G with QLoRA Qwen3-8B):
+#   Single GPU:      ~23GB / 24GB (99%) - CRASHES at step 1500
+#   DDP only:        ~23GB per GPU (no savings, just faster)
+#   DDP + ZeRO-2:    ~15-17GB per GPU (optimizer states sharded)
+#   DDP + ZeRO-3:    ~12-14GB per GPU (full parameter sharding)
+parallel:
+  strategy: "deepspeed_zero2"       # Best balance of memory savings and stability
+  num_gpus: 0                       # 0 = auto-detect (torchrun sets this)
+  gradient_checkpointing: true      # Trade compute for memory

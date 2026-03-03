@@ -1,0 +1,197 @@
+# Kubeflow PyTorchJob for QLoRA Training on SageMaker HyperPod (EKS)
+# ===================================================================
+# Same as qwen3_8b-qlora-zero2.yaml but uses ZeRO-3 for full parameter sharding.
+# Per-GPU memory: ~12-14GB (vs ~15-17GB with ZeRO-2).
+# Supports single-node (NUM_NODES=1) and multi-node (NUM_NODES=2+).
+#
+apiVersion: kubeflow.org/v1
+kind: PyTorchJob
+metadata:
+  name: qwen3-qlora-training-zero3
+  namespace: ${NAMESPACE}
+  labels:
+    project: qwen3-qlora
+    component: training
+  annotations:
+    sagemaker.amazonaws.com/enable-job-auto-resume: "true"
+    sagemaker.amazonaws.com/job-max-retry-count: "3"
+spec:
+  pytorchReplicaSpecs:
+    Master:
+      replicas: 1
+      restartPolicy: OnFailure
+      template:
+        metadata:
+          labels:
+            project: qwen3-qlora
+            component: training
+        spec:
+          tolerations:
+            - key: sagemaker.amazonaws.com/node-health-status
+              operator: Exists
+              effect: NoSchedule
+
+          nodeSelector:
+            node.kubernetes.io/instance-type: ${INSTANCE_TYPE}
+
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: sagemaker.amazonaws.com/node-health-status
+                        operator: In
+                        values:
+                          - Schedulable
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: sagemaker.amazonaws.com/deep-health-check-status
+                        operator: In
+                        values:
+                          - Passed
+
+          containers:
+            - name: pytorch
+              image: ${IMAGE}
+
+              resources:
+                requests:
+                  memory: "${POD_MEMORY_REQUEST}"
+                  cpu: "${POD_CPU_REQUEST}"
+                  ${GPU_RESOURCE}: "${NUM_GPUS}"
+                limits:
+                  memory: "${POD_MEMORY_LIMIT}"
+                  cpu: "${POD_CPU_LIMIT}"
+                  ${GPU_RESOURCE}: "${NUM_GPUS}"
+
+              env:
+                - name: HF_HOME
+                  value: "/fsx/hf_cache"
+                - name: TRANSFORMERS_CACHE
+                  value: "/fsx/hf_cache"
+                - name: PYTORCH_CUDA_ALLOC_CONF
+                  value: "expandable_segments:True,max_split_size_mb:64"
+                - name: NCCL_DEBUG
+                  value: "INFO"
+                - name: NCCL_SOCKET_IFNAME
+                  value: "^lo"
+                - name: NCCL_P2P_DISABLE
+                  value: "1"
+                - name: NCCL_CUMEM_HOST_ENABLE
+                  value: "0"
+
+              volumeMounts:
+                - name: fsx-storage
+                  mountPath: /fsx
+                - name: shm
+                  mountPath: /dev/shm
+
+              args:
+                - "/app/src/train.py"
+                - "--config_path=/app/configs/training_config_zero3.yaml"
+                - "--output_dir=/fsx/qwen3-qlora/outputs-zero3"
+                - "--resume_from_checkpoint=auto"
+
+          volumes:
+            - name: fsx-storage
+              persistentVolumeClaim:
+                claimName: fsx-claim-qlora
+
+            - name: shm
+              emptyDir:
+                medium: Memory
+                sizeLimit: "${SHM_SIZE}"
+
+    # Worker replicas for multi-node training.
+    # NUM_WORKERS=0 → single-node (Master only).
+    # NUM_WORKERS=1 → 2 nodes (1 Master + 1 Worker), etc.
+    Worker:
+      replicas: ${NUM_WORKERS}
+      restartPolicy: OnFailure
+      template:
+        metadata:
+          labels:
+            project: qwen3-qlora
+            component: training
+        spec:
+          tolerations:
+            - key: sagemaker.amazonaws.com/node-health-status
+              operator: Exists
+              effect: NoSchedule
+
+          nodeSelector:
+            node.kubernetes.io/instance-type: ${INSTANCE_TYPE}
+
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: sagemaker.amazonaws.com/node-health-status
+                        operator: In
+                        values:
+                          - Schedulable
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: sagemaker.amazonaws.com/deep-health-check-status
+                        operator: In
+                        values:
+                          - Passed
+
+          containers:
+            - name: pytorch
+              image: ${IMAGE}
+
+              resources:
+                requests:
+                  memory: "${POD_MEMORY_REQUEST}"
+                  cpu: "${POD_CPU_REQUEST}"
+                  ${GPU_RESOURCE}: "${NUM_GPUS}"
+                limits:
+                  memory: "${POD_MEMORY_LIMIT}"
+                  cpu: "${POD_CPU_LIMIT}"
+                  ${GPU_RESOURCE}: "${NUM_GPUS}"
+
+              env:
+                - name: HF_HOME
+                  value: "/fsx/hf_cache"
+                - name: TRANSFORMERS_CACHE
+                  value: "/fsx/hf_cache"
+                - name: PYTORCH_CUDA_ALLOC_CONF
+                  value: "expandable_segments:True,max_split_size_mb:64"
+                - name: NCCL_DEBUG
+                  value: "INFO"
+                - name: NCCL_SOCKET_IFNAME
+                  value: "^lo"
+                - name: NCCL_P2P_DISABLE
+                  value: "1"
+                - name: NCCL_CUMEM_HOST_ENABLE
+                  value: "0"
+
+              volumeMounts:
+                - name: fsx-storage
+                  mountPath: /fsx
+                - name: shm
+                  mountPath: /dev/shm
+
+              args:
+                - "/app/src/train.py"
+                - "--config_path=/app/configs/training_config_zero3.yaml"
+                - "--output_dir=/fsx/qwen3-qlora/outputs-zero3"
+                - "--resume_from_checkpoint=auto"
+
+          volumes:
+            - name: fsx-storage
+              persistentVolumeClaim:
+                claimName: fsx-claim-qlora
+
+            - name: shm
+              emptyDir:
+                medium: Memory
+                sizeLimit: "${SHM_SIZE}"
+
+  nprocPerNode: "${NUM_GPUS}"
