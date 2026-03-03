@@ -9,7 +9,7 @@ spec:
     restartPolicy:
       numRestartBeforeFullJobRestart: 3
       evalPeriodSeconds: 21600
-      maxFullJobRestarts: 1
+      maxFullJobRestarts: 3
     cleanPodPolicy: All
     logMonitoringConfiguration:
       - name: JobStart
@@ -77,7 +77,7 @@ spec:
                 - name: FI_PROVIDER
                   value: efa
                 - name: FI_EFA_USE_DEVICE_RDMA
-                  value: '1'
+                  value: '0'
                 - name: FI_EFA_FORK_SAFE
                   value: '1'
                 - name: TORCH_DISTRIBUTED_DEBUG
