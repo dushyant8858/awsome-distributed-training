@@ -1,119 +1,146 @@
-import os
+# Adapted from the official optimum-neuron training example:
+# https://github.com/huggingface/optimum-neuron/blob/main/examples/training/llama/finetune_llama.py
+#
+# This script extends the upstream example with:
+#   - Support for local model paths (for Slurm/K8s with shared storage)
+#   - Configurable final model save path
+#   - Configurable LoRA parameters via CLI
+
+from dataclasses import dataclass, field
+
 import torch
-import argparse
 from datasets import load_dataset
 from peft import LoraConfig
-from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
-from optimum.neuron import NeuronSFTConfig, NeuronSFTTrainer
-from optimum.neuron.distributed import lazy_load_for_parallelism
-import torch_xla.core.xla_model as xm
+from transformers import AutoTokenizer, HfArgumentParser
 
-def format_dolly(examples):
-    """
-    Format a set of examples into a specific prompt structure for the Dolly model.
-    Args:
-        examples (dict): A dictionary containing the following keys:
-            instruction (list): A list of instruction strings.
-            context (list): A list of context strings (optional).
-            response (list): A list of response strings.
-    Returns:
-        list: A list of formatted prompt strings, each containing the instruction, context (if available), and response.
-    """    
+from optimum.neuron import NeuronSFTConfig, NeuronSFTTrainer, NeuronTrainingArguments
+from optimum.neuron.models.training import NeuronModelForCausalLM
 
-    output_text = []
-    for i in range(len(examples["instruction"])):
-        instruction = f"### Instruction\\n{examples['instruction'][i]}"
-        context = f"### Context\\n{examples['context'][i]}" if examples["context"][i] else None
-        response = f"### Answer\\n{examples['response'][i]}"
-        prompt = "\\n\\n".join([i for i in [instruction, context, response] if i is not None])
-        output_text.append(prompt)
-    return output_text
 
-def training_function(args):
-    """
-    Fine-tunes a language model using the LoRA (Low-Rank Adaptation) technique.
-    """
-    dataset = load_dataset(args.dataset, split="train")    
-    try:
-        xm.master_print("Load model and tokenizer locally...")
-        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path)
-        tokenizer.pad_token = tokenizer.eos_token
-        with lazy_load_for_parallelism(tensor_parallel_size=args.tp_size):
-            model = AutoModelForCausalLM.from_pretrained(
-                args.model_path, 
-                low_cpu_mem_usage=True, 
-                torch_dtype=torch.bfloat16 if args.bf16 else torch.float32
-            )
-    except Exception as e:
-        print(f"Error loading model or tokenizer: {e}")
-        raise
-    
+# =============================================================================
+# Data Formatting
+# =============================================================================
+
+
+def format_dolly(example, tokenizer):
+    """Format Dolly dataset examples using the tokenizer's chat template."""
+    user_content = example["instruction"]
+    if len(example["context"]) > 0:
+        user_content += f"\n\nContext: {example['context']}"
+
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": user_content},
+        {"role": "assistant", "content": example["response"]},
+    ]
+
+    return tokenizer.apply_chat_template(messages, tokenize=False)
+
+
+# =============================================================================
+# Training
+# =============================================================================
+
+
+def train(model_id, tokenizer, dataset, training_args, script_args):
+    trn_config = training_args.trn_config
+    dtype = torch.bfloat16 if training_args.bf16 else torch.float32
+
+    model = NeuronModelForCausalLM.from_pretrained(
+        model_id,
+        trn_config,
+        torch_dtype=dtype,
+        attn_implementation="flash_attention_2",
+    )
+
     lora_config = LoraConfig(
-        r=16,
-        lora_alpha=16,
-        lora_dropout=0.05,
-        target_modules=["q_proj", "v_proj"],# ["o_proj", "k_proj", "up_proj", "down_proj"],
+        r=script_args.lora_r,
+        lora_alpha=script_args.lora_alpha,
+        lora_dropout=script_args.lora_dropout,
+        target_modules=[
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        ],
         bias="none",
         task_type="CAUSAL_LM",
     )
-    
-    xm.master_print(lora_config)
-    
-    training_args = NeuronSFTConfig(
-        output_dir=args.model_checkpoint_path,
-        overwrite_output_dir=True,
-        num_train_epochs=args.epochs,
-        per_device_train_batch_size=args.train_batch_size,
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
-        learning_rate=args.learning_rate,
-        weight_decay=args.weight_decay,
-        warmup_steps=args.warmup_steps,
-        bf16=args.bf16,
-        tensor_parallel_size=args.tp_size,
-        pipeline_parallel_size=args.pp_size,
-        save_steps=args.checkpoint_frequency,
-        logging_steps=100,
-        max_steps=args.max_steps,
-        max_seq_length=args.max_seq_length,
-        )
-    xm.master_print(f"training_args: {training_args}")
+
+    sft_config = NeuronSFTConfig(
+        max_length=script_args.max_seq_length,
+        packing=True,
+        **training_args.to_dict(),
+    )
 
     trainer = NeuronSFTTrainer(
-        args=training_args,
+        args=sft_config,
         model=model,
         peft_config=lora_config,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         train_dataset=dataset,
-        formatting_func=format_dolly,
+        formatting_func=lambda example: format_dolly(example, tokenizer),
     )
 
     trainer.train()
-    trainer.save_model(args.model_final_path)
-    
+
+    if script_args.model_final_path:
+        trainer.save_model(script_args.model_final_path)
+
+
+# =============================================================================
+# Script Arguments
+# =============================================================================
+
+
+@dataclass
+class ScriptArguments:
+    model_id: str = field(
+        metadata={
+            "help": "Model name on HuggingFace Hub, or path to a local model directory."
+        },
+    )
+    dataset: str = field(
+        default="databricks/databricks-dolly-15k",
+        metadata={"help": "Dataset name on HuggingFace Hub."},
+    )
+    max_seq_length: int = field(
+        default=2048,
+        metadata={
+            "help": "Maximum sequence length. Must be a multiple of 2048 when using flash attention."
+        },
+    )
+    model_final_path: str = field(
+        default="",
+        metadata={
+            "help": "Path to save the final model after training (in addition to output_dir checkpoints)."
+        },
+    )
+    lora_r: int = field(default=16, metadata={"help": "LoRA rank."})
+    lora_alpha: int = field(default=16, metadata={"help": "LoRA alpha."})
+    lora_dropout: float = field(default=0.05, metadata={"help": "LoRA dropout."})
+
+
+# =============================================================================
+# Main
+# =============================================================================
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model_path", type=str)
-    parser.add_argument("--tokenizer_path", type=str)
-    parser.add_argument("--epochs", type=int)
-    parser.add_argument("--train_batch_size", type=int)
-    parser.add_argument("--learning_rate", type=float)
-    parser.add_argument("--weight_decay", type=float)
-    parser.add_argument("--bf16", type=bool)
-    parser.add_argument("--tp_size", type=int)
-    parser.add_argument("--pp_size", type=int)
-    parser.add_argument("--gradient_accumulation_steps", type=int)
-    parser.add_argument("--warmup_steps", type=int)
-    parser.add_argument("--early_stopping_patience", type=int)
-    parser.add_argument("--checkpoint_frequency", type=int)
-    parser.add_argument("--dataset", type=str)
-    parser.add_argument("--max_steps", type=int)
-    parser.add_argument("--max_seq_length", type=int)
-    parser.add_argument("--model_type", type=str)
-    parser.add_argument("--seed", type=str, default="42")
-    parser.add_argument("--model_checkpoint_path", type=str)
-    parser.add_argument("--model_final_path", type=str)
-    args = parser.parse_args()
-    
-    set_seed(int(args.seed))
-    training_function(args)
-    
+    parser = HfArgumentParser((ScriptArguments, NeuronTrainingArguments))
+    script_args, training_args = parser.parse_args_into_dataclasses()
+
+    tokenizer = AutoTokenizer.from_pretrained(script_args.model_id)
+    tokenizer.pad_token = tokenizer.eos_token
+
+    dataset = load_dataset(script_args.dataset, split="train")
+
+    train(
+        model_id=script_args.model_id,
+        tokenizer=tokenizer,
+        dataset=dataset,
+        training_args=training_args,
+        script_args=script_args,
+    )

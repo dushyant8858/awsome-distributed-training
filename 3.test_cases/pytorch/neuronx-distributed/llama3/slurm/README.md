@@ -23,10 +23,10 @@ First, you will create python virtual environment to install `torch-neuronx` and
 
 ```bash
 # Install Python venv 
-sudo apt-get install -y python3.10-venv g++ 
+sudo apt-get install -y python3.12-venv g++ 
 
 # Create Python venv
-python3.10 -m venv /fsx/ubuntu/aws_neuron_venv_pytorch 
+python3.12 -m venv /fsx/ubuntu/aws_neuron_venv_pytorch 
 
 # Activate Python venv 
 source /fsx/ubuntu/aws_neuron_venv_pytorch/bin/activate 
@@ -39,26 +39,26 @@ python -m pip config set global.extra-index-url https://pip.repos.neuron.amazona
 python -m pip install wget awscli huggingface_hub 
 
 # Install Neuron Compiler and Framework
-python -m pip install --upgrade neuronx-cc==2.* torch-neuronx==2.1.* torchvision
+python -m pip install --upgrade neuronx-cc==2.* torch-neuronx==2.9.* torchvision
 
 #Install the neuronx-distributed package 
 python -m pip install neuronx_distributed 
+```
 
-
-This example was tested with Neuron SDK 2.25.0 which includes the following software stack:
+This example was tested with Neuron SDK 2.28.0 which includes the following software stack:
 
 ```bash
 (aws_neuron_venv_pytorch) ubuntu:~$ pip list | grep neuron
-libneuronxla             2.1.714.0
-neuronx-cc               2.20.9961.0+0acef03a
-neuronx-distributed      0.14.18461+9ac233f2
-torch-neuronx            2.1.2.2.4.0
+libneuronxla             2.9.315.0
+neuronx-cc               2.22.12471.0
+neuronx-distributed      0.16.25997
+torch-neuronx            2.9.0.2.11.0
 
 $ srun -N1 dpkg -l | grep neuron # This command runs on a compute instance (trn1.32xlarge)
-ii  aws-neuronx-collectives                     2.27.34.0-ec8cd5e8b                     amd64        neuron_ccom built using CMake
-ii  aws-neuronx-dkms                            2.23.9.0                                all          aws-neuronx driver in DKMS format.
-ii  aws-neuronx-runtime-lib                     2.27.23.0-8deec4dbf                     amd64        neuron_runtime built using CMake
-ii  aws-neuronx-tools                           2.25.145.0                              amd64        Neuron profile and debug tools
+ii  aws-neuronx-collectives                     2.30.58.0                               amd64        neuron_ccom built using CMake
+ii  aws-neuronx-dkms                            2.26.5.0                                all          aws-neuronx driver in DKMS format.
+ii  aws-neuronx-runtime-lib                     2.30.50.0                               amd64        neuron_runtime built using CMake
+ii  aws-neuronx-tools                           2.28.11.0                               amd64        Neuron profile and debug tools
 ```
 
 
@@ -67,7 +67,7 @@ ii  aws-neuronx-tools                           2.25.145.0                      
 In this last step of this section, we will fetch llama3 test case from  `neuronx-distributed` . The test case is included in the official repository, so first clone the repository under home directory.
 
 ```bash
-git clone https://github.com/aws-neuron/neuronx-distributed.git \
+git clone --branch v2.27.0 --depth 1 https://github.com/aws-neuron/neuronx-distributed.git \
           /fsx/ubuntu/neuronx-distributed
 ```
 

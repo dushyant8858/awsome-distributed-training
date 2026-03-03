@@ -1,7 +1,7 @@
 apiVersion: "v1"
 kind: Pod
 metadata:
-  name: peft-tokenize-data
+  name: peft-download-model
   namespace: ${NAMESPACE}
 spec:
   volumes:
@@ -20,12 +20,22 @@ spec:
   containers:
     - name: trn-container
       image: '${IMAGE_URI}'
+      env:
+        - name: HF_TOKEN
+          value: "${HF_TOKEN}"
       command:
-        - python 
-        - peft_tokenize_data.py 
-        - --model_id=${MODEL_ID}
-        - --model_output_path=${MODEL_OUTPUT_PATH}
-        - --tokenizer_output_path=${TOKENIZER_OUTPUT_PATH}
+        - python
+        - -c
+        - |
+          from transformers import AutoTokenizer, AutoModelForCausalLM
+          import os
+          token = os.environ.get("HF_TOKEN", None)
+          print(f"Downloading model ${MODEL_ID} to ${MODEL_OUTPUT_PATH}...")
+          tokenizer = AutoTokenizer.from_pretrained("${MODEL_ID}", token=token)
+          tokenizer.save_pretrained("${MODEL_OUTPUT_PATH}")
+          model = AutoModelForCausalLM.from_pretrained("${MODEL_ID}", token=token)
+          model.save_pretrained("${MODEL_OUTPUT_PATH}")
+          print("Model download complete.")
       volumeMounts:
         - name: shmem
           mountPath: /dev/shm

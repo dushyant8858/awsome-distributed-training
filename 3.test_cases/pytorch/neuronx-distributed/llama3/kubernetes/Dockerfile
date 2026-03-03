@@ -1,6 +1,6 @@
-FROM 763104351884.dkr.ecr.us-east-2.amazonaws.com/pytorch-training-neuronx:2.7.0-neuronx-py310-sdk2.24.1-ubuntu22.04
+FROM 763104351884.dkr.ecr.us-east-2.amazonaws.com/pytorch-training-neuronx:2.9.0-neuronx-py312-sdk2.28.0-ubuntu24.04
 
-RUN git clone https://github.com/aws-neuron/neuronx-distributed.git
+RUN git clone --branch v2.27.0 --depth 1 https://github.com/aws-neuron/neuronx-distributed.git
 COPY ./src /workspace
 RUN cp -r neuronx-distributed/examples/training/llama/* workspace/
 RUN cp -r neuronx-distributed/examples/training/llama/tp_zero1_llama_hf_pretrain/* workspace/

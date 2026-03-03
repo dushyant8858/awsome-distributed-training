@@ -3,7 +3,7 @@ def install_package(package_name):
     subprocess.run(["pip", "install", package_name])
 
 # Example usage
-install_package("transformers==4.43.3")
+install_package("transformers==4.48.0")
 
 import os
 import argparse

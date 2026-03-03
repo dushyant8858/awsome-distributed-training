@@ -104,34 +104,49 @@ spec:
                   vpc.amazonaws.com/efa: ${EFA_PER_NODE}
               env:
               - name: GPUS_PER_NODE
-                value: "32"
+                value: "${NEURON_CORES}"
               - name: NEURON_RT_NUM_CORES
-                value: "32"
+                value: "${NEURON_CORES}"
               - name: NEURON_CC_FLAGS
-                value: "--model-type transformer --distribution-strategy=llm-training --cache_dir=${NEURON_CACHE_DIR}"
+                value: "--model-type transformer --distribution-strategy=llm-training --enable-saturate-infinity --cache_dir=${NEURON_CACHE_DIR}"
+              - name: OMP_NUM_THREADS
+                value: "1"
+              - name: NEURON_FUSE_SOFTMAX
+                value: "1"
+              - name: NEURON_RT_ASYNC_EXEC_MAX_INFLIGHT_REQUESTS
+                value: "5"
+              - name: NEURON_RT_STOCHASTIC_ROUNDING_EN
+                value: "1"
+              - name: MALLOC_ARENA_MAX
+                value: "70"
+              - name: NEURON_EXTRACT_GRAPHS_ONLY
+                value: "1"
               command: 
                 - neuron_parallel_compile
                 - torchrun
-                - --nproc_per_node=8
+                - --nproc_per_node=${NEURON_CORES}
                 - --nnodes=1
                 - train.py
-                - --bf16=True
-                - --checkpoint_frequency=400
+                - --model_id=${MODEL_OUTPUT_PATH}
                 - --dataset=${DATASET_NAME}
                 - --max_seq_length=${MAX_SEQ_LENGTH}
-                - --max_steps=200
-                - --epochs=${EPOCHS}
+                - --model_final_path=${CHECKPOINT_DIR_COMPILE}/final
+                - --lora_r=16
+                - --lora_alpha=16
+                - --lora_dropout=0.05
+                - --bf16
+                - --num_train_epochs=1
+                - --max_steps=10
+                - --per_device_train_batch_size=${TRAIN_BATCH_SIZE}
                 - --gradient_accumulation_steps=3
                 - --learning_rate=${LEARNING_RATE}
-                - --model_path=${MODEL_OUTPUT_PATH}
-                - --tokenizer_path=${TOKENIZER_OUTPUT_PATH}
-                - --model_checkpoint_path=${CHECKPOINT_DIR_COMPILE}
-                - --model_final_path=${CHECKPOINT_DIR_COMPILE}/final
-                - --tp_size=${TP_SIZE}
-                - --pp_size=${PP_SIZE}
-                - --train_batch_size=${TRAIN_BATCH_SIZE}
-                - --warmup_steps=100
                 - --weight_decay=0.01
+                - --warmup_steps=100
+                - --tensor_parallel_size=${TP_SIZE}
+                - --logging_steps=1
+                - --save_steps=400
+                - --output_dir=${CHECKPOINT_DIR_COMPILE}
+                - --overwrite_output_dir
               volumeMounts:
                 - name: shmem
                   mountPath: /dev/shm
