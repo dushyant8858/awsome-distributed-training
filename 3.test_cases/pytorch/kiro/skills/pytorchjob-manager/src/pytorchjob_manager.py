@@ -64,6 +64,33 @@ def generate_pytorchjob_yaml(config: dict[str, Any]) -> str:
         if "NCCL_DEBUG" not in env:
             env_list.append({"name": "NCCL_DEBUG", "value": "INFO"})
     
+    # Add EFA environment variables for high-performance networking
+    efa_enabled = config.get("efa_enabled", False)
+    num_efa = config.get("num_efa_per_worker", 0)
+    if efa_enabled or num_efa > 0:
+        # Instance type determines RDMA support:
+        #   g5: NO GPUDirect RDMA -> FI_EFA_USE_DEVICE_RDMA=0, NCCL_PROTO=simple
+        #   p4d/p5: GPUDirect RDMA -> FI_EFA_USE_DEVICE_RDMA=1
+        use_rdma = config.get("use_device_rdma", False)
+        efa_defaults = {
+            "FI_PROVIDER": "efa",
+            "FI_EFA_USE_DEVICE_RDMA": "1" if use_rdma else "0",
+            "FI_EFA_FORK_SAFE": "1",
+            "RDMAV_FORK_SAFE": "1",
+            "NCCL_NET": "ofi",
+            "LD_LIBRARY_PATH": "/opt/amazon/ofi-nccl/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}",
+        }
+        if not use_rdma:
+            efa_defaults["NCCL_PROTO"] = "simple"
+        
+        for k, v in efa_defaults.items():
+            if k not in env:
+                env_list.append({"name": k, "value": v})
+        
+        if num_efa == 0:
+            num_efa = 1  # Default to 1 EFA device
+        logger.info(f"EFA enabled: {num_efa} devices/worker, RDMA={use_rdma}")
+    
     # Build resource requirements
     resource_reqs = {
         "limits": {
@@ -73,6 +100,11 @@ def generate_pytorchjob_yaml(config: dict[str, Any]) -> str:
             "nvidia.com/gpu": str(num_gpus_per_worker)
         }
     }
+    
+    # Add EFA device resource if enabled
+    if efa_enabled or config.get("num_efa_per_worker", 0) > 0:
+        resource_reqs["limits"]["vpc.amazonaws.com/efa"] = str(num_efa)
+        resource_reqs["requests"]["vpc.amazonaws.com/efa"] = str(num_efa)
     
     if "memory" in resources:
         resource_reqs["limits"]["memory"] = resources["memory"]
@@ -98,24 +130,38 @@ def generate_pytorchjob_yaml(config: dict[str, Any]) -> str:
         })
     
     # Build the PyTorchJob spec
+    node_selector = config.get("node_selector", {})
+    tolerations = config.get("tolerations", [])
+    
+    # Build pod spec with optional nodeSelector and tolerations
+    def _build_pod_spec(container_spec):
+        spec = {
+            "containers": [container_spec],
+            "volumes": volumes_spec if volumes_spec else None
+        }
+        if node_selector:
+            spec["nodeSelector"] = node_selector
+        if tolerations:
+            spec["tolerations"] = tolerations
+        return spec
+    
     replica_specs = {
         "Master": {
             "replicas": 1,
             "restartPolicy": "OnFailure",
             "template": {
-                "spec": {
-                    "containers": [
-                        {
-                            "name": "pytorch",
-                            "image": image,
-                            "command": command,
-                            "env": env_list,
-                            "resources": resource_reqs,
-                            "volumeMounts": volume_mounts if volume_mounts else None
-                        }
-                    ],
-                    "volumes": volumes_spec if volumes_spec else None
-                }
+                "metadata": {
+                    "labels": config.get("labels", {})
+                } if config.get("labels") else {},
+                "spec": _build_pod_spec({
+                    "name": "pytorch",
+                    "image": image,
+                    "imagePullPolicy": config.get("image_pull_policy", "Always"),
+                    "command": command,
+                    "env": env_list,
+                    "resources": resource_reqs,
+                    "volumeMounts": volume_mounts if volume_mounts else None
+                })
             }
         }
     }
@@ -127,21 +173,23 @@ def generate_pytorchjob_yaml(config: dict[str, Any]) -> str:
             "replicas": worker_replicas,
             "restartPolicy": "OnFailure",
             "template": {
-                "spec": {
-                    "containers": [
-                        {
-                            "name": "pytorch",
-                            "image": image,
-                            "command": command,
-                            "env": env_list,
-                            "resources": resource_reqs,
-                            "volumeMounts": volume_mounts if volume_mounts else None
-                        }
-                    ],
-                    "volumes": volumes_spec if volumes_spec else None
-                }
+                "metadata": {
+                    "labels": config.get("labels", {})
+                } if config.get("labels") else {},
+                "spec": _build_pod_spec({
+                    "name": "pytorch",
+                    "image": image,
+                    "imagePullPolicy": config.get("image_pull_policy", "Always"),
+                    "command": command,
+                    "env": env_list,
+                    "resources": resource_reqs,
+                    "volumeMounts": volume_mounts if volume_mounts else None
+                })
             }
         }
+    
+    # Build elastic policy if specified
+    elastic_policy = config.get("elastic_policy", None)
     
     pytorchjob = {
         "apiVersion": "kubeflow.org/v1",
@@ -151,6 +199,7 @@ def generate_pytorchjob_yaml(config: dict[str, Any]) -> str:
             "namespace": namespace
         },
         "spec": {
+            "elasticPolicy": elastic_policy,
             "pytorchReplicaSpecs": replica_specs
         }
     }

@@ -1,13 +1,3 @@
----
-name: pytorchjob-manager
-description: Manage PyTorchJob resources on Amazon EKS for distributed training. Deploy, monitor, get logs, and delete PyTorchJobs using the Kubeflow Training Operator.
-license: MIT
-compatibility: kiro
-metadata:
-  category: deployment
-  author: opencode
----
-
 # PyTorchJob Manager Skill
 
 Manage PyTorchJob resources on Amazon EKS for distributed training workloads.

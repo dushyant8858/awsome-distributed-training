@@ -1,77 +1,97 @@
 name: eks-cluster-manager
-version: 1.0.0
+version: 2.0.0
 description: |
-  Discover, validate, and manage EKS clusters for training workloads.
-  Supports interactive cluster selection, validation of required components
-  (GPU plugin, EFA, Kubeflow), auto-fix of issues, and cluster creation.
+  Create, validate, and manage EKS clusters and supporting infrastructure
+  (VPC, subnets, security groups, VPC endpoints, IAM roles, S3) for
+  HyperPod distributed training workloads. Uses direct boto3 API calls
+  with security guardrails enforced by default.
 
 triggers:
   - type: command
     pattern: "/manage-eks-cluster"
-    description: "Manage EKS cluster for training"
+    description: "Provision or validate EKS cluster infrastructure"
 
 parameters:
-  - name: cluster_name
+  - name: name_prefix
+    type: string
+    default: "sagemaker-hyperpod"
+    description: "Prefix for all resource names and tags"
+
+  - name: eks_cluster_name
     type: string
     default: ""
-    description: "Cluster name (auto-discover if empty)"
-  
+    description: "EKS cluster name (defaults to {name_prefix}-eks)"
+
   - name: region
     type: string
     default: "us-west-2"
     description: "AWS region"
-  
-  - name: validate_components
-    type: boolean
-    default: true
-    description: "Validate cluster components"
-  
-  - name: auto_fix
-    type: boolean
-    default: false
-    description: "Auto-fix detected issues"
-  
-  - name: create_if_missing
-    type: boolean
-    default: false
-    description: "Create cluster if none exist"
-  
-  - name: infrastructure_type
+
+  - name: kubernetes_version
     type: string
-    default: "cloudformation"
-    description: "Infrastructure type: cloudformation or terraform"
+    default: "1.32"
+    description: "Kubernetes version"
+
+  - name: availability_zone_id
+    type: string
+    default: ""
+    description: "AZ ID for private HyperPod subnet (e.g., usw2-az2). Auto-detected if empty."
+
+  - name: vpc_cidr
+    type: string
+    default: "10.192.0.0/16"
+    description: "Primary VPC CIDR block"
+
+  - name: private_subnet_cidr
+    type: string
+    default: "10.1.0.0/16"
+    description: "Secondary CIDR for HyperPod private subnet"
+
+  - name: action
+    type: string
+    default: "provision"
+    description: "Action: provision, validate, create_access_entry"
 
 outputs:
-  - name: cluster_name
+  - name: vpc
+    type: object
+    description: "VPC details (vpc_id, subnet_ids, etc.)"
+
+  - name: security_group_id
     type: string
-    description: "Selected cluster name"
-  
-  - name: cluster_status
+    description: "Training security group ID"
+
+  - name: eks_cluster
+    type: object
+    description: "EKS cluster details (name, arn, endpoint, status)"
+
+  - name: sagemaker_execution_role_arn
     type: string
-    description: "Cluster status (PASS/WARNING/FAIL)"
-  
+    description: "SageMaker execution role ARN (needed for HyperPod)"
+
+  - name: s3_bucket
+    type: string
+    description: "S3 bucket name for lifecycle scripts"
+
   - name: validation_report
     type: object
-    description: "Detailed validation results"
-  
-  - name: fixes_applied
-    type: array
-    description: "List of fixes applied"
+    description: "Cluster validation results"
 
 dependencies:
   - aws-cli
   - kubectl
   - python3
+  - boto3
 
 examples:
   - command: "/manage-eks-cluster"
-    description: "Discover and select cluster interactively"
-  
-  - command: "/manage-eks-cluster --cluster-name my-cluster --validate_components"
-    description: "Validate specific cluster"
-  
-  - command: "/manage-eks-cluster --auto_fix --create_if_missing"
-    description: "Auto-fix issues and create if needed"
+    description: "Provision complete EKS infrastructure with defaults"
+
+  - command: "/manage-eks-cluster --name_prefix my-training --availability_zone_id usw2-az2"
+    description: "Provision with custom prefix and pinned AZ"
+
+  - command: "/manage-eks-cluster --action validate --eks_cluster_name my-cluster"
+    description: "Validate existing cluster readiness"
 
 author: opencode
 license: MIT

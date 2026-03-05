@@ -1,5 +1,5 @@
 name: training-job-deployer
-version: 1.1.0
+version: 1.2.0
 description: |
   Deploy and manage distributed training jobs on EKS using torchrun.
   Supports both kubectl and HyperPod CLI with automatic torchrun configuration,

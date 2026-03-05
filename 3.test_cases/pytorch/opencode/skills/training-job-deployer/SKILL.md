@@ -85,6 +85,26 @@ python3 ~/.config/opencode/skills/training-job-deployer/src/deploy.py \
   --hyperpod_group test-cluster-eks-try2-ig-8x
 ```
 
+## Prerequisites: End-to-End Infrastructure Setup
+
+Before using this skill, the infrastructure must be provisioned in this exact order (validated end-to-end):
+
+```
+1. eks-cluster-manager        → VPC, subnets, IAM, S3, EKS cluster
+2. hyperpod-manager (Helm)    → HyperPod Helm chart (MUST install BEFORE creating cluster)
+3. hyperpod-manager (scripts) → Lifecycle scripts to S3
+4. hyperpod-manager (cluster) → Create HyperPod cluster (auto-adds SageMaker=true tag)
+5. hyperpod-manager (obs)     → Observability addon (AMP/Prometheus)
+6. hyperpod-manager (HPTO)    → Training operator (auto-installs cert-manager first)
+```
+
+**Critical ordering notes:**
+- HyperPod Helm chart MUST be installed before creating the cluster, and must NOT use `--wait` flag
+- cert-manager is REQUIRED before the training operator (HPTO) addon
+- The `SageMaker=true` tag is REQUIRED on the EKS cluster for the HPTO managed IAM policy
+- HyperPod node selector label is `sagemaker.amazonaws.com/compute-type: hyperpod` (NOT `hyperpod-node-type`)
+- `UpdateCluster` API cannot add `OverrideVpcConfig` to existing instance groups
+
 ## How It Works
 
 When you run me in **deploy mode**, I execute this workflow:
@@ -146,6 +166,17 @@ Step 3: Scale down instances (if --scale_down)
 ### EFA (High-Performance Networking)
 - `--use_efia`: Enable EFA (default: True for g5/p4d/p5)
 - `--efa_device`: EFA devices per node (default: 1)
+
+**Instance-specific EFA configuration:**
+| Instance | GPU | EFA | RDMA | Key Env Vars |
+|----------|-----|-----|------|-------------|
+| g5.xlarge+ | A10G | Yes (1 device) | No | `FI_EFA_USE_DEVICE_RDMA=0`, `NCCL_PROTO=simple` |
+| p4d.24xlarge | A100 | Yes (4 devices) | Yes | `FI_EFA_USE_DEVICE_RDMA=1` |
+| p5.48xlarge | H100 | Yes (32 devices) | Yes | `FI_EFA_USE_DEVICE_RDMA=1` |
+
+**Required for all EFA:** `NCCL_NET=ofi`, `LD_LIBRARY_PATH=/opt/amazon/ofi-nccl/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH`
+
+> **Warning:** Without `NCCL_NET=ofi` and correct `LD_LIBRARY_PATH`, NCCL silently falls back to TCP sockets. Training may work but will be significantly slower.
 
 ### Training Configuration
 - `--model_path`: Model path (default: Qwen/Qwen2.5-0.5B)
@@ -245,46 +276,36 @@ I print clear step indicators:
 ```
 
 ### "I want to debug a specific step"
-Run the sub-skill directly:
+Run the sub-skill directly. Each skill lives in `~/.config/opencode/skills/<skill-name>/`:
 ```bash
-# Just check cluster
-python3 ~/.config/opencode/skills/k8s-cluster-manager/src/check_cluster.py my-cluster
+# Check cluster health
+kubectl get nodes -o wide
+kubectl get pods -A | grep -E 'gpu|efa|training'
 
-# Just setup Ray
-python3 ~/.config/opencode/skills/ray-cluster-manager/src/ray_manager.py create
+# Check Ray cluster
+kubectl get rayclusters
+kubectl exec <head-pod> -- ray status
 
-# Just monitor
-python3 ~/.config/opencode/skills/training-monitor/src/monitor.py --job_id xxx
+# Check PyTorchJob
+kubectl get pytorchjobs
+kubectl describe pytorchjob <job-name>
+
+# Check HyperPod
+aws sagemaker describe-cluster --cluster-name <name>
 ```
 
-### "Deployment failed, how do I recover?"
-Check which step failed, then:
+### "ray job submit fails with 0 GPUs"
+**Do NOT use `ray job submit`** — it runs in an isolated process that can't see cluster GPU resources. Use `kubectl exec` on the head pod directly. The deploy.py script handles this correctly.
+
+### "NCCL timeout / AllGather hangs"
+Check if EFA is actually being used (not falling back to TCP):
 ```bash
-# If cluster check failed
-python3 ~/.config/opencode/skills/k8s-cluster-manager/src/check_cluster.py my-cluster --full
-
-# If Ray setup failed
-python3 ~/.config/opencode/skills/ray-cluster-manager/src/ray_manager.py status my-job
-
-# If monitoring needed
-python3 ~/.config/opencode/skills/training-monitor/src/monitor.py --head_pod xxx
+kubectl logs <pod> | grep -i 'nccl\|ofi\|efa\|socket'
+# Look for: "NET/OFI Selected provider is efa" (good)
+# Bad sign: "NET/Socket" or no OFI mention
 ```
 
 ## Advanced Usage
-
-### Python API
-```python
-from training_job_deployer.src.deploy import deploy_training_job
-
-result = deploy_training_job({
-    'cluster_name': 'my-cluster',
-    'image_uri': 'my-image:latest',
-    'use_ray': True,
-    'num_nodes': 4,
-    'auto_monitor': True,
-    'max_retries': 10
-})
-```
 
 ### Skip Validation (Fast Deploy)
 ```bash
@@ -324,6 +345,16 @@ I require these skills to be installed:
 ```
 
 Each sub-skill is standalone and can be used independently.
+
+## Files
+
+```
+training-job-deployer/
+├── SKILL.md        # This file
+├── skill.yaml      # Skill metadata (v1.2.0)
+└── src/
+    └── deploy.py   # Orchestrator (604 lines)
+```
 
 ## Known Issues
 
