@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+#
 # nsys_profile.sh — Modern Nsight Systems profiling wrapper for distributed PyTorch training
 #
 # Usage: nsys_profile.sh [options] -- <training_command>
@@ -86,13 +89,9 @@ find_nsys() {
         echo "$NSYS_BIN"
         return
     fi
-    # Check common HyperPod / DLAMI paths (newest first)
-    local search_paths=(
-        "/opt/nvidia/nsight-systems/2025.6.1/bin/nsys"
-        "/opt/nvidia/nsight-systems/2025.6.1/target-linux-x64/nsys"
-        "/nsight/2025.6.1/bin/nsys"
-    )
-    # Also search via glob for any version
+    # Check common HyperPod / DLAMI paths (newest first via glob)
+    local search_paths=()
+    # Search via glob for any version
     for p in /opt/nvidia/nsight-systems/*/bin/nsys /opt/nvidia/nsight-systems/*/target-linux-x64/nsys; do
         search_paths+=("$p")
     done

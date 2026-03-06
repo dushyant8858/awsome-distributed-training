@@ -143,8 +143,8 @@ python nsys_analyze.py --reports /tmp/nsight-reports/ --format json --output /tm
 # Verbose mode (shows nsys commands)
 python nsys_analyze.py --reports /tmp/nsight-reports/ -v
 
-# Specify nsys binary
-python nsys_analyze.py --reports report.nsys-rep --nsys-bin /opt/nvidia/nsight-systems/2025.6.1/target-linux-x64/nsys
+# Specify nsys binary (version depends on your node)
+python nsys_analyze.py --reports report.nsys-rep --nsys-bin /opt/nvidia/nsight-systems/<version>/target-linux-x64/nsys
 ```
 
 ### Output Format
@@ -230,7 +230,7 @@ python nsys_analyze.py --reports /tmp/nsight-reports/ --output /tmp/analysis.md
 
 1. **`--kill=none` is critical** — Without it, nsys terminates the training process when `--duration` expires. With `--kill=none`, training continues and nsys writes the report file.
 
-2. **`--pytorch=autograd-shapes-nvtx` requires nsys >= 2024.5** — Earlier versions don't support this flag. The 2025.6.1 version on HyperPod supports it.
+2. **`--pytorch=autograd-shapes-nvtx` requires nsys >= 2024.5** — Earlier versions don't support this flag. HyperPod nodes ship with a compatible version.
 
 3. **`--gpu-metrics-devices` NOT supported on A10G (g5)** — The A10G GPU (Ampere GA102) requires elevated privileges for GPU metrics collection. You get: `Insufficient privilege, see https://developer.nvidia.com/ERR_NVGPUCTRPERM`. Set `NSYS_GPU_METRICS=none` for g5 instances. Works on A100/H100/H200.
 
@@ -244,12 +244,15 @@ python nsys_analyze.py --reports /tmp/nsight-reports/ --output /tmp/analysis.md
 
 8. **`restartPolicy: Never`** is recommended for profiling jobs. With `--kill=none` training continues after profiling, but if the job is configured with `OnFailure` restart, Kubernetes may restart pods unnecessarily. `Never` ensures a clean single run.
 
+9. **EFA for production profiling** — For production profiling on P4/P5 instances, ensure EFA environment variables are set and the container image includes the [OFI-NCCL plugin](https://github.com/aws/aws-ofi-nccl). Without EFA, NCCL falls back to TCP, which will appear as communication-bound in profiling results. Use `NCCL_TUNER_PLUGIN=/opt/amazon/ofi-nccl/lib/libnccl-ofi-tuner.so` to auto-select optimal NCCL protocols for the instance type — avoid setting `NCCL_PROTO` and `NCCL_ALGO` manually.
+
 ## nsys recipe Integration
 
 For deeper analysis, the `.nsys-rep` files can be processed with `nsys recipe`:
 
 ```bash
-NSYS=/opt/nvidia/nsight-systems/2025.6.1/target-linux-x64/nsys
+# Set NSYS to the version available on your node, e.g.:
+NSYS=$(ls -d /opt/nvidia/nsight-systems/*/target-linux-x64/nsys | sort -rV | head -1)
 
 # NCCL communication summary
 $NSYS recipe nccl_sum --input report.nsys-rep
