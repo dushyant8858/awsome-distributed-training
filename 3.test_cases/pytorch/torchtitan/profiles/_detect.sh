@@ -2,11 +2,14 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 #
-# _detect.sh — Auto-detect EC2 instance type and resolve the matching profile.
+# instance_detect.sh — Auto-detect EC2 instance type and resolve a profile.
 #
-# Usage (from a recipe script):
-#   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-#   PROFILE_ENV=$("${SCRIPT_DIR}/profiles/_detect.sh" "${SCRIPT_DIR}/profiles")
+# CANONICAL SOURCE: This is the single source of truth for instance detection.
+# Copies exist in each test case's profiles/_detect.sh directory. To update
+# all copies, edit this file and run: ./sync_profiles.sh
+#
+# Usage (from a training script):
+#   PROFILE_ENV=$("path/to/profiles/_detect.sh" "path/to/profiles")
 #   source "$PROFILE_ENV"
 #
 # Detection order:
