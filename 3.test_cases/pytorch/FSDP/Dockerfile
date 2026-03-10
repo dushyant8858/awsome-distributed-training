@@ -15,6 +15,12 @@ FROM base AS hpto
 
 # Install HPEA from test.pypi without deps first (test.pypi has a broken
 # 'FASTAPI' package that shadows the real fastapi), then resolve deps from PyPI.
-RUN pip install "fastapi>=0.113.0" "uvicorn[standard]>=0.30.6" "pip<25.3" psutil \
+# v1.1.2 now declares psutil in pyproject.toml — we verify via pip check, then
+# install any remaining missing deps.
+RUN pip install "fastapi>=0.113.0" "uvicorn[standard]>=0.30.6" "pip<25.3" \
     && pip install --no-deps --index-url https://test.pypi.org/simple/ \
-        --extra-index-url https://pypi.org/simple/ hyperpod-elastic-agent==1.1.1
+        --extra-index-url https://pypi.org/simple/ hyperpod-elastic-agent==1.1.2 \
+    && echo "=== pip check (expect psutil missing) ===" \
+    && pip check 2>&1; pip install psutil \
+    && echo "=== pip check (should pass now) ===" \
+    && pip check
