@@ -5,9 +5,39 @@
 
 set -ex
 
-## Set libfabric flags to use EFA
-export FI_PROVIDER=efa
-export FI_EFA_FORK_SAFE=1
+###########################
+###### Instance Profile ###
+###########################
+# Auto-detect instance type and source the matching profile.
+# Profiles set: GPUS_PER_NODE, EFA vars, NCCL tuning.
+# Override with: export INSTANCE_PROFILE=g5-12xlarge (before sbatch)
+# See profiles/README.md for details.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROFILES_DIR="${SCRIPT_DIR}/../profiles"
+PROFILE_LOADED=0
+
+if [[ -d "$PROFILES_DIR" ]]; then
+    if PROFILE_ENV=$("${PROFILES_DIR}/_detect.sh" "${PROFILES_DIR}"); then
+        echo "Sourcing instance profile: $PROFILE_ENV"
+        source "$PROFILE_ENV"
+        PROFILE_LOADED=1
+    else
+        echo "WARNING: Profile detection failed. Using defaults (8 GPU, EFA enabled)."
+    fi
+else
+    echo "WARNING: No profiles/ directory found. Using defaults (8 GPU, EFA enabled)."
+fi
+
+# EFA networking — configured by profile or defaults.
+if [[ "$PROFILE_LOADED" != "1" ]]; then
+    # No profile — use legacy EFA defaults
+    export FI_PROVIDER=efa
+    export FI_EFA_FORK_SAFE=1
+    export NCCL_BUFFSIZE=8388608
+    export NCCL_P2P_NET_CHUNKSIZE=524288
+    export NCCL_TUNER_PLUGIN=/opt/aws-ofi-nccl/install/lib/libnccl-ofi-tuner.so
+fi
 
 ## Set this flag for debugging EFA
 #export FI_LOG_LEVEL=warn
@@ -15,24 +45,12 @@ export FI_EFA_FORK_SAFE=1
 ## NCCL Environment variables
 # export NCCL_DEBUG=INFO
 
-### Increase the send queue depth and can turn NCCL communications into non-blocking.
-### https://www.usenix.org/system/files/atc23-choi.pdf
-export NCCL_BUFFSIZE=8388608
-### Improve performance by increasing buffer size for Send/Recv, Gather, Scatter and Alltoall communications
-### https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/p2p.html
-export NCCL_P2P_NET_CHUNKSIZE=524288
-
-### Improve performance for AllReduce by selecting specific protocol and algorithm for specific
-### message size and number of ranks.
-### More information https://github.com/aws/aws-ofi-nccl/wiki/Algorithm-and-Protocol-Tuner-for-AWS.
-export NCCL_TUNER_PLUGIN=/opt/aws-ofi-nccl/install/lib/libnccl-ofi-tuner.so
-
 NODELIST=($(scontrol show hostnames $SLURM_JOB_NODELIST))
 TRAIN_NODES_NUM=$((SLURM_NNODES - 1))
 TRAIN_NODES="${NODELIST[@]:0:$TRAIN_NODES_NUM}"
 VLLM_NODE="${NODELIST[$TRAIN_NODES_NUM]}"
 head_node_ip=${NODELIST[0]}
-GPUS_PER_NODE=8
+GPUS_PER_NODE=${GPUS_PER_NODE:-8}
 
 LAUNCHER="accelerate launch \
     --config_file /grpo-math-reasoning/deepspeed_zero3.yaml \
