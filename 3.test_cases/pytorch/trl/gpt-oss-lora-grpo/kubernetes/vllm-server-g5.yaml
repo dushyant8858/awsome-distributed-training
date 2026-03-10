@@ -1,0 +1,123 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# vLLM server pod for GRPO generation
+# Runs `trl vllm-serve` with tensor_parallel=2 and data_parallel=2 across 4 A10G GPUs on 1 node
+# Uses trl-base:latest which has trl[vllm] pre-installed (torch 2.9 + vllm 0.12.0)
+#
+# vLLM auto-detects MXFP4 quantization from the model config (quant_method: mxfp4)
+# and uses Marlin MXFP4 MoE kernels on Ampere GPUs. The 20B model in MXFP4 is ~14GB,
+# fitting easily on a single A10G (24GB). With TP=2/DP=2, each worker shard is ~7GB.
+#
+# Deploy this FIRST, wait for it to be ready, then get its IP:
+#   kubectl apply -f vllm-server-g5.yaml
+#   kubectl wait --for=condition=Ready pod/vllm-server-grpo --timeout=600s
+#   VLLM_IP=$(kubectl get pod vllm-server-grpo -o jsonpath='{.status.podIP}')
+# Then pass VLLM_IP to the training job manifest
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vllm-server-grpo
+  labels:
+    app: gpt-oss-vllm-server
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    node.kubernetes.io/instance-type: ml.g5.12xlarge
+  tolerations:
+    - key: "sagemaker.amazonaws.com/compute-type"
+      operator: "Equal"
+      value: "hyperpod"
+      effect: "NoSchedule"
+  containers:
+    - name: vllm
+      image: 975049888767.dkr.ecr.us-west-2.amazonaws.com/trl-base:latest
+      imagePullPolicy: Always
+      resources:
+        requests:
+          nvidia.com/gpu: 4
+          memory: "160Gi"
+          vpc.amazonaws.com/efa: 1
+        limits:
+          nvidia.com/gpu: 4
+          memory: "168Gi"
+          vpc.amazonaws.com/efa: 1
+      ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        - containerPort: 51216
+          name: weight-sync
+          protocol: TCP
+      env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-token
+              key: token
+        - name: HF_HOME
+          value: "/fsx/hf_cache"
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0,1,2,3"
+        # EFA/NCCL env vars — required for cross-pod NCCL weight sync with trainer
+        - name: NCCL_DEBUG
+          value: "WARN"
+        - name: NCCL_TIMEOUT
+          value: "1800"
+        - name: FI_PROVIDER
+          value: "efa"
+        - name: FI_EFA_USE_DEVICE_RDMA
+          value: "0"
+        - name: FI_EFA_FORK_SAFE
+          value: "1"
+        - name: NCCL_PROTO
+          value: "simple"
+        - name: RDMAV_FORK_SAFE
+          value: "1"
+        - name: NCCL_NVLS_ENABLE
+          value: "0"
+        - name: NCCL_NET
+          value: "ofi"
+        - name: NCCL_SOCKET_IFNAME
+          value: "^docker,lo,veth"
+        - name: NCCL_BUFFSIZE
+          value: "8388608"
+        - name: NCCL_P2P_NET_CHUNKSIZE
+          value: "2097152"
+        - name: NCCL_TUNER_PLUGIN
+          value: "/opt/amazon/ofi-nccl/lib/libnccl-ofi-tuner.so"
+        - name: LD_LIBRARY_PATH
+          value: "/opt/amazon/ofi-nccl/lib/x86_64-linux-gnu:/opt/amazon/efa/lib64:/usr/local/cuda/lib64"
+      command:
+        - trl
+        - vllm-serve
+        - --model
+        - /fsx/models/gpt-oss-20b-sft-merged
+        - --tensor_parallel_size
+        - "2"
+        - --data_parallel_size
+        - "2"
+        - --gpu_memory_utilization
+        - "0.85"
+        - --dtype
+        - auto
+        - --host
+        - "0.0.0.0"
+        - --port
+        - "8000"
+        - --trust_remote_code
+        - --enforce_eager
+      volumeMounts:
+        - name: shmem
+          mountPath: /dev/shm
+        - name: fsx-storage
+          mountPath: /fsx
+  volumes:
+    - name: shmem
+      emptyDir:
+        medium: Memory
+        sizeLimit: 64Gi
+    - name: fsx-storage
+      persistentVolumeClaim:
+        claimName: fsx-claim

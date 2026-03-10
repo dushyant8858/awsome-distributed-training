@@ -1,0 +1,53 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# One-time pod to merge SFT LoRA adapter into base model
+# Saves merged model to /fsx/models/gpt-oss-20b-sft-merged/
+# Takes ~5-10 min (load 40GB + merge 15MB adapter + save 40GB)
+# Uses CPU only (no GPU needed) — needs ~80Gi RAM for 20B model in bf16
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: merge-sft-checkpoint
+  labels:
+    app: gpt-oss-merge
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    node.kubernetes.io/instance-type: ml.g5.12xlarge
+  containers:
+    - name: merge
+      image: 975049888767.dkr.ecr.us-west-2.amazonaws.com/gpt-oss-lora-grpo:latest
+      imagePullPolicy: Always
+      resources:
+        requests:
+          memory: "80Gi"
+          cpu: "8"
+        limits:
+          memory: "160Gi"
+          cpu: "16"
+      env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-token
+              key: token
+        - name: HF_HOME
+          value: "/fsx/hf_cache"
+      command:
+        - python
+        - /app/merge_sft_checkpoint.py
+        - --model_name_or_path
+        - openai/gpt-oss-20b
+        - --peft_checkpoint
+        - /fsx/checkpoints/checkpoint-1000
+        - --output_dir
+        - /fsx/models/gpt-oss-20b-sft-merged
+      volumeMounts:
+        - name: fsx-storage
+          mountPath: /fsx
+  volumes:
+    - name: fsx-storage
+      persistentVolumeClaim:
+        claimName: fsx-claim

@@ -5,7 +5,8 @@
 # DeepSpeed, and common training dependencies.
 # Build the base image first: docker build -t trl-base:latest ../../
 
-FROM trl-base:latest
+ARG BASE_IMAGE=975049888767.dkr.ecr.us-west-2.amazonaws.com/trl-base:latest
+FROM ${BASE_IMAGE}
 
 # GPT-OSS specific: HyperPod elastic agent for EKS distributed training
 # Fix torchvision compatibility with PyTorch 2.6.0

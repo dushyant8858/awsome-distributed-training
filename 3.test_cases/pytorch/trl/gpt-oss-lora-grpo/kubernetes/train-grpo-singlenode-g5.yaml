@@ -1,0 +1,78 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# GRPO single-node training on g5.12xlarge (4x A10G 24GB)
+# Uses device_map="auto" to spread 20B model across 4 GPUs
+# Loads SFT LoRA checkpoint, merges it, then trains new LoRA for GRPO
+apiVersion: v1
+kind: Pod
+metadata:
+  name: grpo-single
+  labels:
+    app: grpo-single
+spec:
+  restartPolicy: OnFailure
+  nodeSelector:
+    sagemaker.amazonaws.com/compute-type: hyperpod
+  containers:
+    - name: pytorch
+      image: 975049888767.dkr.ecr.us-west-2.amazonaws.com/gpt-oss-lora-grpo:latest
+      imagePullPolicy: Always
+      resources:
+        requests:
+          nvidia.com/gpu: 4
+          memory: "160Gi"
+          cpu: "40"
+        limits:
+          nvidia.com/gpu: 4
+          memory: "168Gi"
+      env:
+      - name: PYTORCH_CUDA_ALLOC_CONF
+        value: "expandable_segments:True,garbage_collection_threshold:0.6"
+      - name: HF_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: hf-token
+            key: token
+      - name: HF_HOME
+        value: "/fsx/hf_cache"
+      - name: CUDA_VISIBLE_DEVICES
+        value: "0,1,2,3"
+      - name: NCCL_TIMEOUT
+        value: "1200"
+      command:
+        - "/bin/bash"
+        - "-c"
+        - |
+          echo "=== GRPO Training on g5.12xlarge ==="
+          echo "Node: $(hostname)"
+          echo "GPUs: $(nvidia-smi -L 2>/dev/null | wc -l)"
+          nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null
+          echo "HF_HOME: $HF_HOME"
+          echo "Checking SFT checkpoint..."
+          ls -la /fsx/checkpoints/checkpoint-1000/adapter_config.json
+          echo "Starting GRPO training..."
+
+          python /app/grpo_singlenode.py \
+            --model_name_or_path openai/gpt-oss-20b \
+            --peft_checkpoint /fsx/checkpoints/checkpoint-1000 \
+            --output_dir /fsx/checkpoints/grpo-singlenode \
+            --num_generations 8 \
+            --num_epochs 10 \
+            --learning_rate 1e-6 \
+            --per_device_train_batch_size 1 \
+            --gradient_accumulation_steps 8 \
+            --eval_size 20
+      volumeMounts:
+        - name: shmem
+          mountPath: /dev/shm
+        - name: fsx-storage
+          mountPath: /fsx
+  volumes:
+    - name: shmem
+      emptyDir:
+        medium: Memory
+        sizeLimit: 64Gi
+    - name: fsx-storage
+      persistentVolumeClaim:
+        claimName: fsx-claim

@@ -1,0 +1,17 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+# vLLM server image for GRPO training
+# Extends the shared trl/Dockerfile which includes trl[vllm], PyTorch, Flash Attention, etc.
+# Unlike the training image, this KEEPS vLLM installed for serving generation requests.
+
+FROM trl-base:latest
+
+# Fix torchvision compatibility with PyTorch 2.6.0
+RUN pip install torchvision==0.21.0
+
+# Note: vLLM is already installed via trl[vllm] in the base image — do NOT uninstall it here
+# The trl vllm-serve command is available from the trl package
+
+# No source code needed — the vLLM server is launched via `trl vllm-serve` CLI
+ENV PYTHONPATH="${PYTHONPATH}:/app"

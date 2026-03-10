@@ -1,0 +1,171 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# GRPO training with vLLM server mode on 3x g5.12xlarge (12 GPUs, DeepSpeed ZeRO-3)
+# 1 node reserved for vLLM server (separate pod), 3 nodes for training
+#
+# Architecture:
+#   - vLLM server pod (vllm-server-g5.yaml): generation on 1 node (4 GPUs, TP=4)
+#   - This job: training on 3 nodes (12 GPUs, DeepSpeed ZeRO-3 + CPU offload)
+#   - Weight sync: trainer pushes updated weights to vLLM via NCCL on port 51216
+#
+# Prerequisites:
+#   1. Merged model at /fsx/models/gpt-oss-20b-sft-merged/ (run merge-sft-checkpoint-g5.yaml)
+#   2. vLLM server running (kubectl apply -f vllm-server-g5.yaml)
+#   3. Get vLLM pod IP: kubectl get pod vllm-server-grpo -o jsonpath='{.status.podIP}'
+#   4. Update VLLM_SERVER_HOST env var below with the IP
+#
+# Deploy:
+#   kubectl apply -f train-grpo-vllm-hyperpod-g5.yaml
+
+apiVersion: sagemaker.amazonaws.com/v1
+kind: HyperPodPyTorchJob
+metadata:
+  name: grpo-vllm-hyperpod-g5
+spec:
+  nprocPerNode: "4"
+  elasticPolicy:
+    minReplicas: 1
+    maxReplicas: 3
+    replicaIncrementStep: 1
+    scalingTimeoutInSeconds: 300
+    gracefulShutdownTimeoutInSeconds: 30
+  replicaSpecs:
+    - name: worker
+      replicas: 3
+      maxReplicas: 3
+      template:
+        metadata:
+          labels:
+            app: gpt-oss-grpo-vllm
+        spec:
+          serviceAccountName: default
+          nodeSelector:
+            node.kubernetes.io/instance-type: ml.g5.12xlarge
+          tolerations:
+            - key: "node.kubernetes.io/not-ready"
+              operator: "Exists"
+              effect: "NoExecute"
+              tolerationSeconds: 30
+            - key: "node.kubernetes.io/unreachable"
+              operator: "Exists"
+              effect: "NoExecute"
+              tolerationSeconds: 30
+          containers:
+            - name: pytorch
+              image: 975049888767.dkr.ecr.us-west-2.amazonaws.com/gpt-oss-lora-grpo:latest
+              imagePullPolicy: Always
+              resources:
+                requests:
+                  nvidia.com/gpu: 4
+                  memory: "160Gi"
+                  vpc.amazonaws.com/efa: 1
+                limits:
+                  nvidia.com/gpu: 4
+                  memory: "160Gi"
+                  vpc.amazonaws.com/efa: 1
+              env:
+              # DeepSpeed ZeRO-3 config
+              - name: DEEPSPEED_CONFIG
+                value: "/app/configs/ds_config_zero3.json"
+              # Memory management
+              - name: PYTORCH_CUDA_ALLOC_CONF
+                value: "expandable_segments:True,garbage_collection_threshold:0.6"
+              # NCCL configuration
+              - name: NCCL_DEBUG
+                value: "WARN"
+              - name: NCCL_TIMEOUT
+                value: "1800"
+              - name: TORCH_NCCL_BLOCKING_WAIT
+                value: "1"
+              # EFA configuration for g5 (NO GPUDirect RDMA)
+              - name: FI_PROVIDER
+                value: "efa"
+              - name: FI_EFA_USE_DEVICE_RDMA
+                value: "0"
+              - name: FI_EFA_FORK_SAFE
+                value: "1"
+              - name: NCCL_PROTO
+                value: "simple"
+              - name: RDMAV_FORK_SAFE
+                value: "1"
+              - name: NCCL_NVLS_ENABLE
+                value: "0"
+              - name: NCCL_NET
+                value: "ofi"
+              - name: NCCL_SOCKET_IFNAME
+                value: "^docker,lo,veth"
+              - name: NCCL_BUFFSIZE
+                value: "8388608"
+              - name: NCCL_P2P_NET_CHUNKSIZE
+                value: "2097152"
+              - name: NCCL_TUNER_PLUGIN
+                value: "/opt/amazon/ofi-nccl/lib/libnccl-ofi-tuner.so"
+              # aws-ofi-nccl library path for EFA
+              - name: LD_LIBRARY_PATH
+                value: "/opt/amazon/ofi-nccl/lib/x86_64-linux-gnu:/opt/amazon/efa/lib64:/usr/local/cuda/lib64"
+              # HuggingFace
+              - name: HF_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: hf-token
+                    key: token
+              - name: HF_HOME
+                value: "/fsx/hf_cache"
+              # GPU devices
+              - name: CUDA_VISIBLE_DEVICES
+                value: "0,1,2,3"
+              # vLLM server address — UPDATE THIS with the vLLM pod IP
+              - name: VLLM_SERVER_HOST
+                value: "10.1.148.202"
+              - name: VLLM_SERVER_PORT
+                value: "8000"
+              # Pod info
+              - name: MY_POD_IP
+                valueFrom:
+                  fieldRef:
+                    fieldPath: status.podIP
+              - name: MY_POD_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.name
+              command:
+                - hyperpodrun
+                - --nproc_per_node=4
+                - --nnodes=3
+                - /app/grpo_vllm_server.py
+                - --model_name_or_path
+                - /fsx/models/gpt-oss-20b-sft-merged
+                - --vllm_server_host
+                - $(VLLM_SERVER_HOST)
+                - --vllm_server_port
+                - "8000"
+                - --output_dir
+                - /fsx/checkpoints/grpo-vllm
+                - --num_generations
+                - "8"
+                - --num_epochs
+                - "10"
+                - --learning_rate
+                - "1e-6"
+                - --per_device_train_batch_size
+                - "1"
+                - --gradient_accumulation_steps
+                - "2"
+                - --max_completion_length
+                - "512"
+                - --eval_size
+                - "20"
+              volumeMounts:
+                - name: shmem
+                  mountPath: /dev/shm
+                - name: fsx-storage
+                  mountPath: /fsx
+          volumes:
+            - name: shmem
+              emptyDir:
+                medium: Memory
+                sizeLimit: 64Gi
+            - name: fsx-storage
+              persistentVolumeClaim:
+                claimName: fsx-claim

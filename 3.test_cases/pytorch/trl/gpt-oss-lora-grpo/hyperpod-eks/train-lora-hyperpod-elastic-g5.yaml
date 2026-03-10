@@ -1,0 +1,144 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Adapted from train-lora-hyperpod-elastic-g6e.yaml for g5.12xlarge instances
+# Key differences from g6e:
+#   - 4 nodes with 4x A10G GPUs each (16 GPUs total, 24GB VRAM each)
+#   - No GPUDirect RDMA (FI_EFA_USE_DEVICE_RDMA=0)
+#   - NCCL_PROTO=simple (required for g5 without RDMA)
+#   - FSDP CPU offload required (20B model doesn't fit on 24GB without sharding)
+#   - Higher memory requests for CPU offload (140Gi per pod)
+#   - The 20B model uses Mxfp4Config quantization so fits in 24GB per GPU with FSDP
+
+apiVersion: sagemaker.amazonaws.com/v1
+kind: HyperPodPyTorchJob
+metadata:
+  name: lora-hyperpod-elastic-g5
+spec:
+  nprocPerNode: "4"
+  elasticPolicy:
+    minReplicas: 1
+    maxReplicas: 4
+    replicaIncrementStep: 1
+    scalingTimeoutInSeconds: 300
+    gracefulShutdownTimeoutInSeconds: 30
+  replicaSpecs:
+    - name: worker
+      replicas: 4
+      maxReplicas: 4
+      template:
+        metadata:
+          labels:
+            app: gpt-oss-lora-elastic
+        spec:
+          serviceAccountName: default
+          nodeSelector:
+            node.kubernetes.io/instance-type: ml.g5.12xlarge
+          tolerations:
+            - key: "node.kubernetes.io/not-ready"
+              operator: "Exists"
+              effect: "NoExecute"
+              tolerationSeconds: 30
+            - key: "node.kubernetes.io/unreachable"
+              operator: "Exists"
+              effect: "NoExecute"
+              tolerationSeconds: 30
+          containers:
+            - name: pytorch
+              image: 975049888767.dkr.ecr.us-west-2.amazonaws.com/gpt-oss-lora-grpo:latest
+              imagePullPolicy: Always
+              resources:
+                requests:
+                  nvidia.com/gpu: 4
+                  memory: "160Gi"
+                  vpc.amazonaws.com/efa: 1
+                limits:
+                  nvidia.com/gpu: 4
+                  memory: "160Gi"
+                  vpc.amazonaws.com/efa: 1
+              env:
+              - name: PYTORCH_CUDA_ALLOC_CONF
+                value: "expandable_segments:True,garbage_collection_threshold:0.6"
+              - name: NCCL_DEBUG
+                value: "WARN"
+              # Increase NCCL timeout for large model FSDP init (20 min)
+              - name: NCCL_TIMEOUT
+                value: "1200"
+              - name: TORCH_NCCL_BLOCKING_WAIT
+                value: "1"
+              # EFA configuration for g5 (NO GPUDirect RDMA)
+              - name: FI_PROVIDER
+                value: "efa"
+              - name: FI_EFA_USE_DEVICE_RDMA
+                value: "0"
+              - name: FI_EFA_FORK_SAFE
+                value: "1"
+              - name: NCCL_PROTO
+                value: "simple"
+              - name: RDMAV_FORK_SAFE
+                value: "1"
+              - name: NCCL_NVLS_ENABLE
+                value: "0"
+              - name: NCCL_NET
+                value: "ofi"
+              - name: NCCL_SOCKET_IFNAME
+                value: "^docker,lo,veth"
+              - name: NCCL_BUFFSIZE
+                value: "8388608"
+              - name: NCCL_P2P_NET_CHUNKSIZE
+                value: "2097152"
+              - name: NCCL_TUNER_PLUGIN
+                value: "/opt/amazon/ofi-nccl/lib/libnccl-ofi-tuner.so"
+              # aws-ofi-nccl library path for EFA
+              - name: LD_LIBRARY_PATH
+                value: "/opt/amazon/ofi-nccl/lib/x86_64-linux-gnu:/opt/amazon/efa/lib64:/usr/local/cuda/lib64"
+              - name: HF_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: hf-token
+                    key: token
+              - name: HF_HOME
+                value: "/fsx/hf_cache"
+              - name: MY_POD_IP
+                valueFrom:
+                  fieldRef:
+                    fieldPath: status.podIP
+              - name: MY_POD_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.name
+              # Set RESUME_CHECKPOINT to a specific path to resume from that checkpoint
+              # Leave empty or unset to auto-detect latest checkpoint
+              - name: RESUME_CHECKPOINT
+                value: ""
+              command:
+                - hyperpodrun
+                - --nproc_per_node=4
+                - --nnodes=4
+                - /app/sft.py
+                - --config
+                - /app/configs/sft_lora.yaml
+                - --output_dir=/fsx/checkpoints
+                - --bf16=True
+                - --per_device_train_batch_size=1
+                - --gradient_checkpointing=true
+                - --max_steps=1000
+                - --save_steps=25
+                - --save_total_limit=5
+                - --logging_steps=1
+                - --fsdp=full_shard auto_wrap offload
+                - --fsdp_transformer_layer_cls_to_wrap=GptOssDecoderLayer
+                - --report_to=none
+              volumeMounts:
+                - name: shmem
+                  mountPath: /dev/shm
+                - name: fsx-storage
+                  mountPath: /fsx
+          volumes:
+            - name: shmem
+              emptyDir:
+                medium: Memory
+                sizeLimit: 64Gi
+            - name: fsx-storage
+              persistentVolumeClaim:
+                claimName: fsx-claim

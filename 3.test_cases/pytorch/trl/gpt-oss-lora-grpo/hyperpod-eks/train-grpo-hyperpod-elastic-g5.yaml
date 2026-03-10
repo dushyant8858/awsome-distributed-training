@@ -1,0 +1,144 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# GRPO multi-node training on 4x g5.12xlarge (4 nodes × 4 GPUs each)
+# Each node: 1 torchrun process using device_map="auto" across 4 local GPUs
+# DDP syncs gradients between nodes (4-way data parallelism)
+# Dataset auto-sharded: each node processes 1/4 of the data
+# ~4x faster than single-node at ~150s/step → ~37s/effective-step
+
+apiVersion: sagemaker.amazonaws.com/v1
+kind: HyperPodPyTorchJob
+metadata:
+  name: grpo-hyperpod-elastic-g5
+spec:
+  nprocPerNode: "1"
+  elasticPolicy:
+    minReplicas: 1
+    maxReplicas: 4
+    replicaIncrementStep: 1
+    scalingTimeoutInSeconds: 300
+    gracefulShutdownTimeoutInSeconds: 30
+  replicaSpecs:
+    - name: worker
+      replicas: 4
+      maxReplicas: 4
+      template:
+        metadata:
+          labels:
+            app: gpt-oss-grpo-elastic
+        spec:
+          serviceAccountName: default
+          nodeSelector:
+            node.kubernetes.io/instance-type: ml.g5.12xlarge
+          tolerations:
+            - key: "node.kubernetes.io/not-ready"
+              operator: "Exists"
+              effect: "NoExecute"
+              tolerationSeconds: 30
+            - key: "node.kubernetes.io/unreachable"
+              operator: "Exists"
+              effect: "NoExecute"
+              tolerationSeconds: 30
+          containers:
+            - name: pytorch
+              image: 975049888767.dkr.ecr.us-west-2.amazonaws.com/gpt-oss-lora-grpo:latest
+              imagePullPolicy: Always
+              resources:
+                requests:
+                  nvidia.com/gpu: 4
+                  memory: "160Gi"
+                  vpc.amazonaws.com/efa: 1
+                limits:
+                  nvidia.com/gpu: 4
+                  memory: "160Gi"
+                  vpc.amazonaws.com/efa: 1
+              env:
+              - name: PYTORCH_CUDA_ALLOC_CONF
+                value: "expandable_segments:True,garbage_collection_threshold:0.6"
+              - name: NCCL_DEBUG
+                value: "WARN"
+              # Increased timeout for model loading + first generation compile
+              - name: NCCL_TIMEOUT
+                value: "1800"
+              - name: TORCH_NCCL_BLOCKING_WAIT
+                value: "1"
+              # EFA configuration for g5 (NO GPUDirect RDMA)
+              - name: FI_PROVIDER
+                value: "efa"
+              - name: FI_EFA_USE_DEVICE_RDMA
+                value: "0"
+              - name: FI_EFA_FORK_SAFE
+                value: "1"
+              - name: NCCL_PROTO
+                value: "simple"
+              - name: RDMAV_FORK_SAFE
+                value: "1"
+              - name: NCCL_NVLS_ENABLE
+                value: "0"
+              - name: NCCL_NET
+                value: "ofi"
+              - name: NCCL_SOCKET_IFNAME
+                value: "^docker,lo,veth"
+              - name: NCCL_BUFFSIZE
+                value: "8388608"
+              - name: NCCL_P2P_NET_CHUNKSIZE
+                value: "2097152"
+              - name: NCCL_TUNER_PLUGIN
+                value: "/opt/amazon/ofi-nccl/lib/libnccl-ofi-tuner.so"
+              # aws-ofi-nccl library path for EFA
+              - name: LD_LIBRARY_PATH
+                value: "/opt/amazon/ofi-nccl/lib/x86_64-linux-gnu:/opt/amazon/efa/lib64:/usr/local/cuda/lib64"
+              - name: HF_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: hf-token
+                    key: token
+              - name: HF_HOME
+                value: "/fsx/hf_cache"
+              - name: CUDA_VISIBLE_DEVICES
+                value: "0,1,2,3"
+              - name: MY_POD_IP
+                valueFrom:
+                  fieldRef:
+                    fieldPath: status.podIP
+              - name: MY_POD_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.name
+              command:
+                - hyperpodrun
+                - --nproc_per_node=1
+                - --nnodes=4
+                - /app/grpo_singlenode.py
+                - --model_name_or_path
+                - openai/gpt-oss-20b
+                - --peft_checkpoint
+                - /fsx/checkpoints/checkpoint-1000
+                - --output_dir
+                - /fsx/checkpoints/grpo-multinode
+                - --num_generations
+                - "8"
+                - --num_epochs
+                - "10"
+                - --learning_rate
+                - "1e-6"
+                - --per_device_train_batch_size
+                - "1"
+                - --gradient_accumulation_steps
+                - "2"
+                - --eval_size
+                - "20"
+              volumeMounts:
+                - name: shmem
+                  mountPath: /dev/shm
+                - name: fsx-storage
+                  mountPath: /fsx
+          volumes:
+            - name: shmem
+              emptyDir:
+                medium: Memory
+                sizeLimit: 64Gi
+            - name: fsx-storage
+              persistentVolumeClaim:
+                claimName: fsx-claim
