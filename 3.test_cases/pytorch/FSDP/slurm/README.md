@@ -65,9 +65,16 @@ If you are using a container image, you need to uncomment the line below in the 
 #export CONTAINER_IMAGE=$(pwd)/pytorch-fsdp.sqsh
 ```
 
-If you are using non-EFA enabled instances, such as G4dn, or single GPU g5 nodes, comment out all EFA environment variables on lines 24-25.
+If you are using non-EFA enabled instances, such as G4dn, or single GPU g5 nodes, the [instance profile system](../profiles/) handles this automatically — the matching profile disables EFA variables for non-EFA instances. If you're not using profiles, comment out all EFA environment variables on lines 24-25.
 
-Also, under `User Variables` make sure to adjust `GPUS_PER_NODE` to match the number of GPUs on your instance type (8 for P4d(e)/P5/P6-B200), 4 for G5.12xlarge, 1 for G5.xlarge).
+The instance profile also sets `GPUS_PER_NODE` automatically. If you're not using profiles, under `User Variables` make sure to adjust `GPUS_PER_NODE` to match the number of GPUs on your instance type (8 for P4d(e)/P5/P6-B200), 4 for G5.12xlarge, 1 for G5.xlarge).
+
+To override the profile, set `INSTANCE_PROFILE` or `INSTANCE_TYPE` before running sbatch:
+
+```bash
+export INSTANCE_TYPE=g5.12xlarge
+sbatch llama3_2_1b-training.sbatch
+```
 
 You can also adjust the training parameters in `TRAINING_ARGS` (for example, to increase batch size). Additional parameters can be found in `src/model_utils/arguments.py`. Note that we use the same directory for both `--checkpoint_dir` and `--resume_from_checkpoint`. If there are multiple checkpoints, `--resume_from_checkpoint` will automatically select the most recent one. This way if our training is interupted for any reason, it will automatically pick up the most recent checkpoint.
 

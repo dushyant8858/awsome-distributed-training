@@ -19,6 +19,14 @@ It is designed to be simple with no data preparation or tokenizer to download, a
 > for parameter adjustments needed across instance types, and
 > [instance profiles](../../../docs/instance-profiles/) for hardware details.
 
+### Instance Profiles
+
+This test case includes an [instance profile system](profiles/) that auto-detects
+your EC2 instance type and configures GPU count, EFA networking, NCCL settings,
+and FSDP memory optimizations automatically. The Slurm scripts source the
+matching profile at runtime — no manual editing of `GPUS_PER_NODE` or EFA
+variables needed. See [profiles/README.md](profiles/README.md) for details.
+
 ## Prerequisites
 
 To run FSDP training, you will need to create a training cluster based on Slurm or Kubermetes with an [Amazon FSx for Lustre](https://docs.aws.amazon.com/fsx/latest/LustreGuide/what-is.html)

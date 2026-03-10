@@ -87,7 +87,34 @@ If you'd like to instead use your own dataset, you can do so by [formatting it a
 
 Generate the Kubernetes manifest and apply it to the cluster.
 
-Create environment variables:
+Create environment variables.
+
+You can use the [instance profiles](../profiles/) to set GPU count, EFA, and
+other instance-specific values automatically, or set them manually:
+
+**Option A: Use an instance profile** (recommended)
+
+Source the profile for your instance type to set `GPU_PER_NODE`, `EFA_PER_NODE`,
+and EFA variables automatically:
+
+``` bash
+# Auto-detect or override with INSTANCE_TYPE
+export INSTANCE_TYPE=p5.48xlarge
+PROFILE_ENV=$(../profiles/_detect.sh ../profiles/)
+source "$PROFILE_ENV"
+
+cat << EOF > env_vars
+export IMAGE_URI=${REGISTRY}fsdp:pytorch2.7.1
+export INSTANCE_TYPE=${INSTANCE_TYPE}
+export NUM_NODES=4
+export GPU_PER_NODE=${GPU_PER_NODE}
+export EFA_PER_NODE=${EFA_PER_NODE}
+export FI_PROVIDER=${FI_PROVIDER:-}
+export HF_TOKEN=<YOUR HF ACCESS TOKEN>
+EOF
+```
+
+**Option B: Set values manually**
 
 ``` bash
 cat << EOF > env_vars
@@ -101,18 +128,15 @@ export HF_TOKEN=<YOUR HF ACCESS TOKEN>
 EOF
 ```
 
-For reference, we are running the Llama 3.1 8B model on 4 x p5.48xlarge instances and below is the configuration of our environment variables:
-``` bash
-cat << EOF > env_vars
-export IMAGE_URI=${REGISTRY}fsdp:pytorch2.7.1
-export INSTANCE_TYPE=p5.48xlarge
-export NUM_NODES=4
-export GPU_PER_NODE=8
-export EFA_PER_NODE=32
-export FI_PROVIDER=efa
-export HF_TOKEN=<YOUR HF ACCESS TOKEN>
-EOF
-```
+Quick reference for common instance types:
+
+| Instance | GPU_PER_NODE | EFA_PER_NODE | FI_PROVIDER |
+|----------|-------------|-------------|-------------|
+| p5en.48xlarge | 8 | 32 | efa |
+| p5.48xlarge | 8 | 32 | efa |
+| p4de.24xlarge | 8 | 4 | efa |
+| g5.12xlarge | 4 | 0 | (unset) |
+| g6e.12xlarge | 4 | 0 | (unset) |
 
 Fill in `env_vars` and then source variables:
 
@@ -125,9 +149,9 @@ Apply yaml:
 envsubst < llama3_1_8b-fsdp.yaml | kubectl apply -f -
 ```
 
-EFA level variables are available for adjustment in fsdp.yaml-template
-Keep FI_* values commented out for non-efa instances (G5, G4d, P3) or P5
-Uncomment FI_* values for P4d instances
+> **Note on EFA variables:** The FI_* env vars in the YAML templates are commented
+> out by default. For EFA-enabled instances (p4de, p5, p5en), uncomment them.
+> For non-EFA instances (g5, g6e), leave them commented out and set `EFA_PER_NODE=0`.
 
 You can also adjust the training parameters in `TRAINING_ARGS` (for example, to train Llama 3.1 70B). Additional parameters can be found in `src/model_utils/arguments.py`. Note that we use the same directory for both `--checkpoint_dir` and `--resume_from_checkpoint`. If there are multiple checkpoints, `--resume_from_checkpoint` will automatically select the most recent one. This way if our training is interupted for any reason, it will automatically pick up the most recent checkpoint.
 

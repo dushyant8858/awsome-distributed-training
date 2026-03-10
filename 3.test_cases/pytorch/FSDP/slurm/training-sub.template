@@ -12,15 +12,37 @@
 set -ex;
 
 ###########################
-###### User Variables #####
+###### Instance Profile ###
 ###########################
+# Auto-detect instance type and source the matching profile.
+# Profiles set: GPUS_PER_NODE, FI_PROVIDER, EFA_PER_NODE, FSDP_CPU_OFFLOAD, etc.
+# Override with: export INSTANCE_PROFILE=g5-12xlarge (before sbatch)
+# See profiles/README.md for details.
 
-GPUS_PER_NODE=8 # 4 for G5.12x, 8 for P4/P5
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROFILES_DIR="${SCRIPT_DIR}/../profiles"
+PROFILE_LOADED=0
+
+if [[ -d "$PROFILES_DIR" ]]; then
+    # _detect.sh prints diagnostics to stderr and the profile path to stdout.
+    if PROFILE_ENV=$("${PROFILES_DIR}/_detect.sh" "${PROFILES_DIR}"); then
+        echo "Sourcing instance profile: $PROFILE_ENV"
+        source "$PROFILE_ENV"
+        PROFILE_LOADED=1
+    else
+        echo "WARNING: Profile detection failed. Using defaults (8 GPU, EFA enabled)."
+    fi
+else
+    echo "WARNING: No profiles/ directory found. Using defaults (8 GPU, EFA enabled)."
+fi
+
+# Fallback defaults when no profile is loaded (assumes P5-class instance)
+GPUS_PER_NODE=${GPUS_PER_NODE:-8}
 
 ###############################
 ###### Container Variable #####
 ###############################
-# Uncomment if you want to use a container instea of Virtual Environment.
+# Uncomment if you want to use a container instead of Virtual Environment.
 #export CONTAINER_IMAGE=$(pwd)/pytorch-fsdp.sqsh
 export DATA_PATH=/fsx
 export FSX_MOUNT=$(pwd):$DATA_PATH
@@ -29,22 +51,27 @@ export FSX_MOUNT=$(pwd):$DATA_PATH
 ## Environment Variables ##
 ###########################
 
-## Plenty of EFA level variables
-## For G4dn and other G5, comment out all
-#export FI_LOG_LEVEL=warn
+# EFA networking — configured by profile or defaults.
+# Non-EFA instances (g5, g6e) have EFA_PER_NODE=0 in their profile,
+# which skips these variables. EFA instances set FI_PROVIDER in the profile.
+if [[ "$PROFILE_LOADED" == "1" ]]; then
+    # Profile was sourced — trust its EFA settings.
+    # If profile set FI_PROVIDER, EFA is enabled. Otherwise, it's a non-EFA instance.
+    true
+else
+    # No profile — use legacy EFA defaults (P4/P5)
+    export FI_PROVIDER=efa
+    export FI_EFA_USE_HUGE_PAGE=0
+    export FI_EFA_SET_CUDA_SYNC_MEMOPS=0
+fi
+
 export NCCL_DEBUG=INFO
-export FI_PROVIDER=efa
-export FI_EFA_USE_HUGE_PAGE=0    # Set to 0 when you see os.fork() causes OSError: Cannot allocate memory.  Disabling huge page causes minor performance hit.
-## Switching SYNC_MEMOPS to zero can boost throughput with FSDP
-## Disables CU_POINTER_ATTRIBUTE_SYNC_MEMOPS
-## Reduces memory synchronizations
-## https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__UNIFIED.html
-export FI_EFA_SET_CUDA_SYNC_MEMOPS=0
+export NCCL_SOCKET_IFNAME=${NCCL_SOCKET_IFNAME:-"^docker,lo,veth,eth"}
+
 # LD_PRELOAD is required for PyTorch to find the NCCL library
 # This path assumes you are using the Deep Learning AMI
 # If you are not using the DLAMI, you may need to update this path
 export LD_PRELOAD=/usr/local/cuda-12.8/lib/libnccl.so
-export NCCL_SOCKET_IFNAME=^docker,lo,veth,eth
 
 ## Set HuggingFace metadata timeout (in seconds) for large clusters
 export HF_HUB_ETAG_TIMEOUT=60
@@ -86,6 +113,27 @@ export TRAIN_SCRIPT=${TRAIN_SCRIPT:=../src/train.py}
 declare -a TRAINING_ARGS=(
     {{ MODEL_PARAMETERS | indent(4) }}
 )
+
+# Conditionally append cpu_offload from instance profile.
+# The profile sets FSDP_CPU_OFFLOAD=1 for memory-constrained instances (e.g., g5)
+# and FSDP_CPU_OFFLOAD_MIN_LAYERS as a threshold so small models (1B, 3B) that
+# fit without offloading aren't penalized. Offloading adds ~30% overhead.
+if [[ "${FSDP_CPU_OFFLOAD:-0}" == "1" ]]; then
+    NUM_LAYERS=""
+    for arg in "${TRAINING_ARGS[@]}"; do
+        if [[ "$arg" == --num_layers=* ]]; then
+            NUM_LAYERS="${arg#*=}"
+            break
+        fi
+    done
+    MIN_LAYERS="${FSDP_CPU_OFFLOAD_MIN_LAYERS:-0}"
+    if [[ -n "$NUM_LAYERS" && "$NUM_LAYERS" -ge "$MIN_LAYERS" ]]; then
+        echo "Enabling --cpu_offload=1 (num_layers=$NUM_LAYERS >= threshold=$MIN_LAYERS)"
+        TRAINING_ARGS+=(--cpu_offload=1)
+    else
+        echo "Skipping cpu_offload (num_layers=${NUM_LAYERS:-unknown} < threshold=$MIN_LAYERS)"
+    fi
+fi
 
 AUTO_RESUME=""
 if [ -d "/opt/sagemaker_cluster" ]; then
