@@ -13,11 +13,6 @@ WORKDIR /fsdp
 # HyperPod-specific image with elastic agent
 FROM base AS hpto
 
-# Install HPEA from test.pypi without deps first (test.pypi has a broken
-# 'FASTAPI' package that shadows the real fastapi), then resolve deps from PyPI.
-# v1.1.2 now declares psutil in pyproject.toml — verified via pip check.
-RUN pip install "fastapi>=0.113.0" "uvicorn[standard]>=0.30.6" "pip<25.3" \
-    && pip install --no-deps --index-url https://test.pypi.org/simple/ \
-        --extra-index-url https://pypi.org/simple/ hyperpod-elastic-agent==1.1.2 \
-    && pip install psutil \
+RUN pip install "pip<25.3" \
+    && pip install hyperpod-elastic-agent==1.1.2 \
     && (pip check 2>&1 | grep -v pygobject || true)
