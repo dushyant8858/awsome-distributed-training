@@ -9,11 +9,11 @@
 | GPU | NVIDIA RTX PRO 6000 (Blackwell, GB202) | NVIDIA RTX PRO 6000 (Blackwell, GB202) |
 | GPU count | 4 | 8 |
 | VRAM per GPU | 96 GB GDDR7 | 96 GB GDDR7 |
-| Memory bandwidth per GPU | 1,792 GB/s | 1,792 GB/s |
-| BF16 TFLOPS per GPU | 252 (dense) / 504 (sparse) | 252 (dense) / 504 (sparse) |
-| FP8 TFLOPS per GPU | 504 (dense) / 1,008 (sparse) | 504 (dense) / 1,008 (sparse) |
-| FP4 TFLOPS per GPU | 1,008 (dense) / 2,015 (sparse) | 1,008 (dense) / 2,015 (sparse) |
-| TF32 TFLOPS per GPU | 126 (dense) / 252 (sparse) | 126 (dense) / 252 (sparse) |
+| Memory bandwidth per GPU | 1,597 GB/s | 1,597 GB/s |
+| BF16 TFLOPS per GPU | 125 (dense) / 252 (sparse) | 125 (dense) / 252 (sparse) |
+| FP8 TFLOPS per GPU | 252 (dense) / 504 (sparse) | 252 (dense) / 504 (sparse) |
+| FP4 TFLOPS per GPU | 504 (dense) / 1,008 (sparse) | 504 (dense) / 1,008 (sparse) |
+| TF32 TFLOPS per GPU | 63 (dense) / 126 (sparse) | 63 (dense) / 126 (sparse) |
 | GPU interconnect | None (PCIe Gen5 P2P) | None (PCIe Gen5 P2P) |
 | GPUDirect RDMA | Yes | Yes |
 | EFA | 2 adapters (EFAv4) | 4 adapters (EFAv4) |

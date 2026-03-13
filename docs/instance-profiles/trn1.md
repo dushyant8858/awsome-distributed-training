@@ -11,7 +11,7 @@
 | NeuronCores (v2) | 2 | 32 | 32 |
 | HBM per chip | 32 GB | 32 GB | 32 GB |
 | Total accelerator memory | 32 GB | 512 GB | 512 GB |
-| Memory bandwidth per chip | 613 GB/s | 613 GB/s | 613 GB/s |
+| Memory bandwidth per chip | 820 GB/s | 820 GB/s | 820 GB/s |
 | BF16 TFLOPS per chip | ~190 | ~190 | ~190 |
 | FP32 TFLOPS per chip | ~47.5 | ~47.5 | ~47.5 |
 | Chip interconnect | N/A (single chip) | NeuronLink v2, 2D torus (768 GB/s) | NeuronLink v2, 2D torus (768 GB/s) |
@@ -19,7 +19,7 @@
 | Network bandwidth | Up to 12.5 Gbps | 800 Gbps | 1,600 Gbps |
 | vCPUs | 8 (Intel Xeon 3rd Gen) | 128 (Intel Xeon 3rd Gen) | 128 (Intel Xeon 3rd Gen) |
 | System memory | 32 GiB | 512 GiB | 512 GiB |
-| Local NVMe | 1 x 512 GB | 4 x 2 TB | 4 x 2 TB |
+| Local NVMe | 1 x 474 GB | 4 x 1.9 TB | 4 x 1.9 TB |
 
 ## Key Characteristics
 
@@ -37,7 +37,7 @@
 
 - **Software stack**: Uses `torch-neuronx` (XLA-based), `neuronx-distributed`
   (NxD Training), `optimum-neuron`, or `neuronx-nemo-megatron`
-- **Max model size**: ~30B with NxD Training parallelism strategies (TP + PP +
+- **Max model size**: 100B+ with NxD Training parallelism strategies (TP + PP +
   DP) across multiple trn1n.32xl nodes
 - **Choose trn1n over trn1** for multi-node training — the 2x network bandwidth
   significantly reduces gradient synchronization time
@@ -67,4 +67,4 @@ export FI_EFA_USE_DEVICE_RDMA=1
 | NVLink / NVSwitch | NeuronLink |
 | FSDP / DeepSpeed | NxD Training (tensor/pipeline/data parallelism) |
 | Transformer Engine (FP8) | Neuron compiler auto-casting |
-| PyTorch (native) | `torch-neuronx` (XLA) or TorchNeuron (native, beta) |
+| PyTorch (native) | `torch-neuronx` (XLA) or native PyTorch (private preview) |

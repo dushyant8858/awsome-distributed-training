@@ -15,7 +15,7 @@
 | BF16 TFLOPS per chip | 190 | 190 | 190 |
 | INT8 TOPS per chip | 380 | 380 | 380 |
 | Chip interconnect | N/A (single chip) | NeuronLink v2 (192 GB/s) | NeuronLink v2 (192 GB/s) |
-| EFA | None | Yes | Yes |
+| EFA | No | No | No |
 | Network bandwidth | Up to 15 Gbps | 50 Gbps | 100 Gbps |
 | vCPUs | 4 | 96 | 192 |
 | System memory | 16 GiB | 384 GiB | 768 GiB |
@@ -58,5 +58,5 @@ export NEURON_RT_NUM_CORES=2   # Adjust per instance (2 per chip)
 |------|-------|-------------|-----|-------|--------------|----------------|-----|
 | inf2.xlarge | 1 | 2 | 32 GB | 4 | 16 | Up to 15 | No |
 | inf2.8xlarge | 1 | 2 | 32 GB | 32 | 128 | Up to 25 | No |
-| inf2.24xlarge | 6 | 12 | 192 GB | 96 | 384 | 50 | Yes |
-| inf2.48xlarge | 12 | 24 | 384 GB | 192 | 768 | 100 | Yes |
+| inf2.24xlarge | 6 | 12 | 192 GB | 96 | 384 | 50 | No |
+| inf2.48xlarge | 12 | 24 | 384 GB | 192 | 768 | 100 | No |

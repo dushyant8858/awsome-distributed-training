@@ -14,7 +14,7 @@
 | TF32 TFLOPS per GPU | 156 (dense) / 312 (sparse) | 156 (dense) / 312 (sparse) |
 | FP8 per GPU | Not supported | Not supported |
 | GPU interconnect | NVSwitch, NVLink 3.0 (600 GB/s per GPU) | NVSwitch, NVLink 3.0 (600 GB/s per GPU) |
-| Total NVLink bisection BW | 4.8 TB/s | 4.8 TB/s |
+| Total NVLink aggregate BW | 4.8 TB/s | 4.8 TB/s |
 | GPUDirect RDMA | Yes | Yes |
 | EFA | 4 adapters (EFAv1) | 4 adapters (EFAv1) |
 | Network bandwidth | 400 Gbps | 400 Gbps |
@@ -32,8 +32,7 @@
   parallelism within a node is efficient
 - **Fewer EFA adapters** (4 vs 32 on p5) — inter-node bandwidth is 400 Gbps
   vs 3,200 Gbps; multi-node scaling is less efficient
-- **Higher CPU memory** (~1,152 GiB) — more headroom for CPU offloading than
-  p5/p5en (2,048 GiB but shared across 8 GPUs)
+- **1,152 GiB system memory** — less than p5/p5en (2,048 GiB) but still ample for CPU offloading workloads
 
 ## Distributed Training Considerations
 

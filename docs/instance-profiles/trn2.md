@@ -4,38 +4,38 @@
 
 ## Hardware at a Glance
 
-| Spec | trn2.48xlarge | trn2u.48xlarge (UltraServer) |
-|------|---------------|------------------------------|
-| Accelerator | AWS Trainium v2 | AWS Trainium v2 |
-| Chips | 16 | 64 (4 nodes x 16) |
-| NeuronCores (v3) | 128 | 512 |
-| HBM per chip | 96 GiB (HBM3) | 96 GiB (HBM3) |
-| Total accelerator memory | 1.5 TB | 6 TB |
-| Memory bandwidth per chip | 2,900 GB/s | 2,900 GB/s |
-| BF16 TFLOPS per chip | ~632 | ~632 |
-| FP8 TFLOPS per chip | ~1,300 | ~1,300 |
-| FP32 TFLOPS per chip | ~160 | ~160 |
-| Chip interconnect | NeuronLink v3, 2D torus (1 TB/s per chip) | NeuronLink v3, 2D torus + inter-node ring (1 TB/s per chip) |
-| EFA | 16 adapters (EFAv3) | 64 adapters (EFAv3) |
-| Network bandwidth | 3,200 Gbps | 12,800 Gbps |
-| vCPUs | 192 | 768 (4 x 192) |
-| System memory | 2 TiB | 8 TiB |
-| Local NVMe | ~7.6 TB | ~32 TB |
+| Spec | trn2.48xlarge | trn2u.48xlarge | UltraServer (4x trn2u) |
+|------|---------------|----------------|------------------------|
+| Accelerator | AWS Trainium v2 | AWS Trainium v2 | AWS Trainium v2 |
+| Chips | 16 | 16 | 64 |
+| NeuronCores (v3) | 128 | 128 | 512 |
+| HBM per chip | 96 GiB (HBM3) | 96 GiB (HBM3) | 96 GiB (HBM3) |
+| Total accelerator memory | 1.5 TB | 1.5 TB | 6 TB |
+| Memory bandwidth per chip | 2,900 GB/s | 2,900 GB/s | 2,900 GB/s |
+| BF16 TFLOPS per chip | ~667 | ~667 | ~667 |
+| FP8 TFLOPS per chip | ~1,300 | ~1,300 | ~1,300 |
+| FP32 TFLOPS per chip | ~181 | ~181 | ~181 |
+| Chip interconnect | NeuronLink v3, 2D torus (1,024 GB/s/chip) | NeuronLink v3, 2D torus (1,024 GB/s/chip) | NeuronLink v3, 2D torus + inter-node ring (64-chip domain) |
+| EFA | 16 adapters (EFAv3) | 16 adapters (EFAv3) | 64 adapters total |
+| Network bandwidth | 3,200 Gbps | 3,200 Gbps | 12,800 Gbps |
+| vCPUs | 192 | 192 | 768 |
+| System memory | 2 TiB | 2 TiB | 8 TiB |
+| Local NVMe | ~7.6 TB | ~7.6 TB | ~32 TB |
 
 ## Key Characteristics
 
-- **Trainium v2** — 3.3x the BF16 compute and 4.7x the memory bandwidth of
+- **Trainium v2** — 3.5x the BF16 compute and 3.6x the memory bandwidth of
   Trainium v1; supports cFP8 (configurable FP8)
 - **NeuronCores v3** — 8 cores per chip (vs 2 on v1); fundamentally redesigned
   for higher throughput and larger models
-- **1 TB/s NeuronLink per chip** — significantly higher than v1's 768 GB/s
-  aggregate; enables efficient model parallelism
+- **1,024 GB/s NeuronLink per chip** — significantly higher intra-node
+  bandwidth than v1; enables efficient model parallelism
 - **trn2u UltraServer** — 4 trn2 nodes connected via NeuronLink v3 into a
   single 64-chip domain; scheduled as one unit, not 4 separate instances
 
 ## UltraServer Topology (trn2u)
 
-The trn2u.48xlarge is a **logical grouping of 4 interconnected trn2 nodes**:
+A Trn2 UltraServer is a **logical grouping of 4 interconnected trn2u.48xlarge instances**:
 
 - **Within each node**: 16 chips connected in a 2D torus via NeuronLink v3
 - **Across nodes**: Chips at corresponding positions connected in a ring

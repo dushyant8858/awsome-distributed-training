@@ -14,7 +14,7 @@
 | TF32 TFLOPS per GPU | 156 (dense) / 312 (sparse) |
 | FP8 per GPU | Not supported |
 | GPU interconnect | NVSwitch, NVLink 3.0 (600 GB/s per GPU) |
-| Total NVLink bisection BW | 4.8 TB/s |
+| Total NVLink aggregate BW | 4.8 TB/s |
 | GPUDirect RDMA | Yes |
 | EFA | 4 adapters (EFAv1) |
 | Network bandwidth | 400 Gbps |
@@ -33,7 +33,7 @@
 - **Dual-socket Intel** — 4 GPUs per CPU socket; NUMA-aware placement matters
   for CPU offloading workloads
 - **4 EFA adapters** — adequate for multi-node training, but 8x fewer than
-  p5/p5e/p5en (32 adapters)
+  p5/p5e (32 adapters)
 
 ## Distributed Training Considerations
 

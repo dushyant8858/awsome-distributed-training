@@ -10,7 +10,7 @@
 | GPU count | 4 | 8 |
 | VRAM per GPU | 48 GB GDDR6 | 48 GB GDDR6 |
 | Memory bandwidth per GPU | 864 GB/s | 864 GB/s |
-| BF16 TFLOPS per GPU | 366 (dense) / 733 (sparse) | 366 (dense) / 733 (sparse) |
+| BF16 TFLOPS per GPU | 362 (dense) / 733 (sparse) | 362 (dense) / 733 (sparse) |
 | FP8 TFLOPS per GPU | 733 (dense) / 1,466 (sparse) | 733 (dense) / 1,466 (sparse) |
 | TF32 TFLOPS per GPU | 183 (dense) / 366 (sparse) | 183 (dense) / 366 (sparse) |
 | GPU interconnect | None (PCIe Gen4) | None (PCIe Gen4) |
@@ -26,7 +26,7 @@
 - **48 GB VRAM** — double the capacity of g5/g6; sufficient for models up to
   ~13B without offloading (BF16), or ~30B with FSDP + offloading
 - **Ada Lovelace architecture** — FP8 Transformer Engine, 4th-gen Tensor Cores;
-  ~3x the BF16 compute of A10G
+  ~3x the BF16 sparse compute of A10G
 - **864 GB/s memory bandwidth** — significantly higher than L4 (300 GB/s) and
   A10G (600 GB/s); better utilization for memory-bound workloads
 - **g6e.48xlarge has 4 EFA adapters** — 400 Gbps network, much better

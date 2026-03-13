@@ -10,17 +10,17 @@
 | GPU count | 8 |
 | VRAM per GPU | 141 GB HBM3e |
 | Memory bandwidth per GPU | 4,800 GB/s |
-| BF16 TFLOPS per GPU | 1,979 (dense) / 3,958 (sparse) |
-| FP8 TFLOPS per GPU | 3,958 (dense) / 7,916 (sparse) |
-| TF32 TFLOPS per GPU | 989 (dense) / 1,979 (sparse) |
+| BF16 TFLOPS per GPU | 990 (dense) / 1,979 (sparse) |
+| FP8 TFLOPS per GPU | 1,979 (dense) / 3,958 (sparse) |
+| TF32 TFLOPS per GPU | 495 (dense) / 989 (sparse) |
 | GPU interconnect | NVSwitch, NVLink 4.0 (900 GB/s per GPU) |
-| Total NVLink bisection BW | 7.2 TB/s |
+| Total NVLink aggregate BW | 7.2 TB/s |
 | GPUDirect RDMA | Yes |
 | EFA | 32 adapters (EFAv2) |
 | Network bandwidth | 3,200 Gbps |
 | vCPUs | 192 (AMD EPYC 7R13) |
 | System memory | 2,048 GiB |
-| Local NVMe | 8 x 3.8 TB |
+| Local NVMe | 8 x 3.84 TB |
 
 ## Key Characteristics
 
@@ -66,7 +66,7 @@ export NCCL_SOCKET_IFNAME=^docker,lo,veth
 | GPU | H100 80 GB | H200 141 GB | H200 141 GB |
 | Memory type | HBM3 | HBM3e | HBM3e |
 | Memory bandwidth | 3,350 GB/s | 4,800 GB/s | 4,800 GB/s |
-| BF16 TFLOPS | 1,979 | 1,979 | 1,979 |
+| BF16 TFLOPS | 990 (dense) / 1,979 (sparse) | 990 (dense) / 1,979 (sparse) | 990 (dense) / 1,979 (sparse) |
 | EFA adapters | 32 (EFAv2) | 32 (EFAv2) | 16 (EFAv3) |
 | PCIe | Gen4 (AMD) | Gen4 (AMD) | Gen5 (Intel) |
 | CPU | AMD EPYC 7R13 | AMD EPYC 7R13 | Intel Sapphire Rapids |

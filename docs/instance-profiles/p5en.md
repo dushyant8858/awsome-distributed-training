@@ -10,17 +10,17 @@
 | GPU count | 8 |
 | VRAM per GPU | 141 GB HBM3e |
 | Memory bandwidth per GPU | 4,800 GB/s |
-| BF16 TFLOPS per GPU | 1,979 (dense) / 3,958 (sparse) |
-| FP8 TFLOPS per GPU | 3,958 (dense) / 7,916 (sparse) |
-| TF32 TFLOPS per GPU | 989 (dense) / 1,979 (sparse) |
+| BF16 TFLOPS per GPU | 990 (dense) / 1,979 (sparse) |
+| FP8 TFLOPS per GPU | 1,979 (dense) / 3,958 (sparse) |
+| TF32 TFLOPS per GPU | 495 (dense) / 989 (sparse) |
 | GPU interconnect | NVSwitch, NVLink 4.0 (900 GB/s per GPU) |
-| Total NVLink bisection BW | 7.2 TB/s |
+| Total NVLink aggregate BW | 7.2 TB/s |
 | GPUDirect RDMA | Yes |
 | EFA | 16 adapters (EFAv3) |
 | Network bandwidth | 3,200 Gbps |
 | vCPUs | 192 (Intel Xeon Sapphire Rapids) |
 | System memory | 2,048 GiB |
-| Local NVMe | 8 x 3.8 TB |
+| Local NVMe | 8 x 3.84 TB |
 
 ## Key Characteristics
 
