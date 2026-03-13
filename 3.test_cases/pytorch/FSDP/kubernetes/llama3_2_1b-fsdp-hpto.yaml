@@ -9,7 +9,7 @@ spec:
     restartPolicy:
       numRestartBeforeFullJobRestart: 3
       evalPeriodSeconds: 21600
-      maxFullJobRestarts: 3
+      maxFullJobRestarts: 1
     cleanPodPolicy: All
     logMonitoringConfiguration:
       - name: JobStart
@@ -41,18 +41,6 @@ spec:
                     matchLabels:
                       job-name: llama3-2-1b-fsdp-hpto
                   topologyKey: kubernetes.io/hostname
-            nodeAffinity:
-              requiredDuringSchedulingIgnoredDuringExecution:
-                nodeSelectorTerms:
-                  - matchExpressions:
-                      - key: sagemaker.amazonaws.com/node-health-status
-                        operator: In
-                        values:
-                          - Schedulable
-                      - key: node.kubernetes.io/instance-type
-                        operator: In
-                        values:
-                          - '${INSTANCE_TYPE}'
           topologySpreadConstraints:
             - maxSkew: 1
               topologyKey: kubernetes.io/hostname
@@ -79,6 +67,8 @@ spec:
                 - name: FI_EFA_USE_DEVICE_RDMA
                   value: '0'
                 - name: FI_EFA_FORK_SAFE
+                  value: '1'
+                - name: FI_EFA_ENABLE_SHM_TRANSFER
                   value: '1'
                 - name: TORCH_DISTRIBUTED_DEBUG
                   value: DETAIL
