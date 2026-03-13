@@ -8,6 +8,63 @@ bandwidth), interconnect topology (NVLink, NeuronLink), network configuration
 (EFA generation, GPUDirect RDMA), and practical guidance for distributed
 training workloads.
 
+## GPU / Accelerator Quick Reference
+
+> All TFLOPS values are **dense** (without sparsity). NVIDIA typically headlines
+> "with sparsity" numbers, which are 2× the dense values shown here.
+
+| GPU | Arch | BF16/FP16 | FP8 | FP4 | TF32/FP32 | Memory | Mem BW |
+|-----|------|-----------|-----|-----|-----------|--------|--------|
+| [T4](https://www.nvidia.com/en-us/data-center/tesla-t4/) | Turing | 65 (FP16) | — | — | — | 16 GB GDDR6 | 320 GB/s |
+| [A10G](https://www.nvidia.com/en-us/data-center/products/a10-gpu/) | Ampere | 125 | — | — | 62.5 | 24 GB GDDR6 | 600 GB/s |
+| [A100 40 GB](https://www.nvidia.com/en-us/data-center/a100/) | Ampere | 312 | — | — | 156 | 40 GB HBM2 | 1,555 GB/s |
+| [A100 80 GB](https://www.nvidia.com/en-us/data-center/a100/) | Ampere | 312 | — | — | 156 | 80 GB HBM2e | 2,039 GB/s |
+| [L4](https://www.nvidia.com/en-us/data-center/l4/) | Ada Lovelace | 121 | 242 | — | 60 | 24 GB GDDR6 | 300 GB/s |
+| [L40S](https://www.nvidia.com/en-us/data-center/l40s/) | Ada Lovelace | 362 | 733 | — | 183 | 48 GB GDDR6 | 864 GB/s |
+| [H100 SXM](https://www.nvidia.com/en-us/data-center/h100/) | Hopper | 990 | 1,979 | — | 495 | 80 GB HBM3 | 3,350 GB/s |
+| [H200 SXM](https://www.nvidia.com/en-us/data-center/h200/) | Hopper | 990 | 1,979 | — | 495 | 141 GB HBM3e | 4,800 GB/s |
+| [RTX PRO 6000](https://www.nvidia.com/en-us/design-visualization/rtx-pro-6000/) | Blackwell | 125 | 252 | 504 | 63 | 96 GB GDDR7 | 1,597 GB/s |
+| [B200 HGX](https://www.nvidia.com/en-us/data-center/b200/) | Blackwell | 2,250 | 4,500 | 9,000 | 1,100 | 179 GB HBM3e | 8,000 GB/s |
+| [B200 Grace](https://www.nvidia.com/en-us/data-center/gb200-nvl72/) | Blackwell | 2,500 | 5,000 | 10,000 | — | 185 GB HBM3e | 8,000 GB/s |
+| [B300 HGX](https://www.nvidia.com/en-us/data-center/b300/) | Blackwell Ultra | 2,250 | 4,500 | 13,500 | 1,125 | 288 GB HBM3e | 8,000 GB/s |
+| Trainium v1 | NeuronCore v2 | 190 | — | — | 47.5 (FP32) | 32 GB HBM | 820 GB/s |
+| Trainium v2 | NeuronCore v3 | 667 | 1,300 | — | 181 (FP32) | 96 GiB HBM3 | 2,900 GB/s |
+| Inferentia v2 | NeuronCore v2 | 190 | — | — | — | 32 GB HBM | 820 GB/s |
+
+## NVIDIA Instance Quick Reference
+
+| Instance Type | GPU | GPUs | GPU Memory | NVLink | NVLink BW | EFA | EFA BW |
+|---------------|-----|------|------------|--------|-----------|-----|--------|
+| [g4dn.metal](g4dn.md) | T4 | 8 | 128 GB | — | — | v1 (1) | 12.5 GB/s |
+| [g5.48xlarge](g5.md) | A10G | 8 | 192 GB | — | — | v1 (1) | 12.5 GB/s |
+| [g6.48xlarge](g6.md) | L4 | 8 | 192 GB | — | — | v2 (1) | 12.5 GB/s |
+| [g6e.48xlarge](g6e.md) | L40S | 8 | 384 GB | — | — | v2 (4) | 50 GB/s |
+| [g7e.48xlarge](g7e.md) | RTX PRO 6000 | 8 | 768 GB | — | — | v4 (4) | 200 GB/s |
+| [p4d.24xlarge](p4d.md) | A100 40 GB | 8 | 320 GB | v3 | 4.8 TB/s | v1 (4) | 50 GB/s |
+| [p4de.24xlarge](p4de.md) | A100 80 GB | 8 | 640 GB | v3 | 4.8 TB/s | v1 (4) | 50 GB/s |
+| [p5.48xlarge](p5.md) | H100 | 8 | 640 GB | v4 | 7.2 TB/s | v2 (32) | 400 GB/s |
+| [p5e.48xlarge](p5e.md) | H200 | 8 | 1,128 GB | v4 | 7.2 TB/s | v2 (32) | 400 GB/s |
+| [p5en.48xlarge](p5en.md) | H200 | 8 | 1,128 GB | v4 | 7.2 TB/s | v3 (16) | 400 GB/s |
+| [p6-b200.48xlarge](p6-b200.md) | B200 | 8 | 1,432 GB | v5 | 14.4 TB/s | v4 (8) | 400 GB/s |
+| [p6-b300.48xlarge](p6-b300.md) | B300 | 8 | 2,100 GB | v5 | 14.4 TB/s | v4 (17) | 800 GB/s |
+| [p6e-gb200.36xlarge](p6e-gb200.md) | B200 Grace | 4 | 740 GB | v5 | 7.2 TB/s | v4 (17) | 400 GB/s |
+
+## Trainium / Inferentia Instance Quick Reference
+
+| Instance Type | Accelerator | Chips | Cores | Total Memory | Interconnect | Interconnect BW | EFA | EFA BW |
+|---------------|-------------|-------|-------|-------------|--------------|-----------------|-----|--------|
+| [trn1.32xlarge](trn1.md) | Trainium v1 | 16 | 32 NeuronCores | 512 GB | NeuronLink v2 | 768 GB/s | v2 (8) | 100 GB/s |
+| [trn1n.32xlarge](trn1.md) | Trainium v1 | 16 | 32 NeuronCores | 512 GB | NeuronLink v2 | 768 GB/s | v2 (16) | 200 GB/s |
+| [trn2.48xlarge](trn2.md) | Trainium v2 | 16 | 128 NeuronCores | 1.5 TB | NeuronLink v3 | 1,024 GB/s/chip | v3 (16) | 400 GB/s |
+| [trn2u.48xlarge](trn2.md) | Trainium v2 | 16 | 128 NeuronCores | 1.5 TB | NeuronLink v3 | 1,024 GB/s/chip | v3 (16) | 400 GB/s |
+| [inf2.48xlarge](inf2.md) | Inferentia v2 | 12 | 24 NeuronCores | 384 GB | NeuronLink v2 | 192 GB/s | — | — |
+
+For detailed per-instance hardware specs, interconnect topology, NCCL/EFA
+configuration, and distributed training guidance, see the individual profiles
+and comparison tables below.
+
+---
+
 ## NVIDIA GPU Instances
 
 ### G-Family (PCIe-attached, no NVSwitch)
