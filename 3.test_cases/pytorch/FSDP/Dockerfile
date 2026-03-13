@@ -13,6 +13,4 @@ WORKDIR /fsdp
 # HyperPod-specific image with elastic agent
 FROM base AS hpto
 
-RUN pip install "pip<25.3" \
-    && pip install hyperpod-elastic-agent==1.1.2 \
-    && (pip check 2>&1 | grep -v pygobject || true)
+RUN pip install hyperpod-elastic-agent==1.1.2
