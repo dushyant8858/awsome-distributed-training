@@ -41,6 +41,14 @@ spec:
                     matchLabels:
                       job-name: llama3-2-1b-fsdp-hpto
                   topologyKey: kubernetes.io/hostname
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: sagemaker.amazonaws.com/node-health-status
+                        operator: In
+                        values:
+                          - Schedulable
           topologySpreadConstraints:
             - maxSkew: 1
               topologyKey: kubernetes.io/hostname
@@ -65,7 +73,7 @@ spec:
                 - name: FI_PROVIDER
                   value: efa
                 - name: FI_EFA_USE_DEVICE_RDMA
-                  value: '0'
+                  value: '0' # g5 instances do not support GPUDirect RDMA; set to '1' for p4d/p5
                 - name: FI_EFA_FORK_SAFE
                   value: '1'
                 - name: FI_EFA_ENABLE_SHM_TRANSFER
